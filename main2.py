@@ -136,7 +136,15 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
                 print(f"Sequence no.: {counter}")
                 if counter == 1:
                     print(f"Time for the first seq (8 detections + 1 prediction): {time.time() - t1:.4} s")
+        
+                # Plot the prediction for each frame
+                # frame = cv2.putText(frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                # cv2.imshow('Frame', frame)
+                # if cv2.waitKey(1) & 0xFF == ord('q'):
+                #     break
+
         frame_count += 1
 
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s")
     cap.release()
+    cv2.destroyAllWindows()
