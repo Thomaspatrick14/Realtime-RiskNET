@@ -15,8 +15,8 @@ from pathlib import Path
 import json
 
 
-target_classes = (1, 2, 3, 4, 6, 8)
-combine_pairs = ((1, 2), (1, 4))
+target_classes = (0, 1, 2, 3, 5, 7)
+combine_pairs = ((0, 1), (0, 3))
 combined_classes = ("cyclist", "motorcyclist")
 combined_class_ids = (212, 214)
 
@@ -136,7 +136,7 @@ def keep_vehicles_only(boxes, classes):
 def keep_roadusers_only(boxes, classes):
     boxes_keep = []
     classes_keep = []
-    keep_idx = [1, 2, 3, 4, 6, 8]
+    keep_idx = [0, 1, 2, 3, 5, 7]
     for i in range(classes.shape[0]):
         if classes[i] in keep_idx:
             boxes_keep.append(boxes[i, :].tolist())
@@ -145,21 +145,22 @@ def keep_roadusers_only(boxes, classes):
 
 
 def predict(image, model, detection_threshold, cutoff_row=250):
-    cutoff_row = int(image.shape[0] * 0.955)
-    image[cutoff_row:, :, :] = 0
-    image = image.transpose((2, 0, 1))  # Faster R-CNN requires C, H, W
-    image = normalize_zero_one(image)
-    image = torch.Tensor(image)
-    if torch.cuda.is_available():
-        image = image.cuda()
+    # cutoff_row = int(image.shape[0] * 0.955)
+    # image[cutoff_row:, :, :] = 0
+    # image = image.transpose((2, 0, 1))  # Faster R-CNN requires C, H, W
+    # image = normalize_zero_one(image) #normalization doesnt seem to work, YOLO isn't detecting anything
+    # image = torch.Tensor(image)
+    # if torch.cuda.is_available():
+    #     image = image.cuda()
     t_start = time.time()
     output = model([image])
     t_pred = time.time() - t_start
+    # output.show()
 
     # get all the predicited class names
-    pred_classes = output[0]['labels'].cpu().numpy()  # [coco_names[i] for i in output[0]['labels'].cpu().numpy()]
-    pred_scores = output[0]['scores'].detach().cpu().numpy()
-    pred_bboxes = output[0]['boxes'].detach().cpu().numpy()
+    pred_bboxes = output.pred[0][:, :4].detach().cpu().numpy()
+    pred_scores = output.pred[0][:, 4].detach().cpu().numpy()
+    pred_classes = output.pred[0][:, 5].detach().cpu().numpy().astype(int)
 
     # get boxes and classes above the threshold score
     boxes = pred_bboxes[pred_scores >= detection_threshold].astype(np.int32)
@@ -184,28 +185,12 @@ coco_names = [
 ]
 
 def detect(frames, img_folder, model):
-    # if platform == "win32":
-    #     img_folder = Path(r"C:/JP/TUe/2nd year Internship and thesis/Internship/Idiada/car_to_bicycle_turning/2023-01-23-16-55-30_filtered_cropped")
-    # else:
-    #     img_folder = Path("/home/developer/Projects/TUe/AITHENA/Data/risknet_clips")   
-
-    # FPS = 10 # 30
-    THRESHOLD = 0.9
+    THRESHOLD = 0.5
     show_predictions = False  # put this on true for the first time you run a clip, in order to determine the cut value
 
     if show_predictions:
         out_dir = Path(img_folder, "detections")
         os.makedirs(out_dir, exist_ok=True)
-
-    # img_names = sorted(os.listdir(img_folder))
-
-    # print(f"Loading the model")
-    # model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-    # if torch.cuda.is_available():
-    #     print("CUDA available: loading the model on the GPU")
-    #     model = model.cuda()
-    # print(f"Model loaded")
-    # model.eval()
 
     detections = []
     pred_times = []
@@ -213,21 +198,12 @@ def detect(frames, img_folder, model):
     
     if isinstance(frames, list):
         for i, frame in enumerate(frames):
-            # name = img_names[i]
-            # path_img = img_folder / name
-            img = np.array(frame)
-            # OPTION 1. resize image
-            target_w = 480
-            target_h = 360
-            img = cv2.resize(img, dsize=(target_w, target_h))
+
+            img = cv2.resize(frame, dsize=(480, 360), interpolation=cv2.INTER_LINEAR)
             # =============================
-            
             boxes, classes, t_pred = predict(img, model, detection_threshold=THRESHOLD)
             pred_times.append(t_pred)
 
-            # if i%25 == 0:
-            #     print(f"{i} took {t_pred:.1f} s to create, including loading the images")
-            #boxes, classes = keep_vehicles_only(boxes, classes)
             boxes, classes = keep_roadusers_only(boxes, classes)
 
             classes = classes.tolist()
@@ -236,9 +212,6 @@ def detect(frames, img_folder, model):
 
             if show_predictions:
                 out_img = visualize(img, boxes, classes)
-                # plt.figure()
-                # plt.imshow(out_img)
-                # plt.show()
                 name = str(i) + ".png"
                 cv2.imwrite(str((out_dir / name).absolute()), out_img)
 
@@ -252,16 +225,13 @@ def detect(frames, img_folder, model):
             # combine
 
             detections.append(frame_preds)
+        avg_pred_time = sum(pred_times)/len(pred_times)
+        print(f"\nTime to estimate detections for this list of frames: {avg_pred_time:.3f} & {1/avg_pred_time:.1f} FPS")
     else:
-        img = np.array(frames)
-        # OPTION 1. resize image
-        target_w = 480
-        target_h = 360
-        img = cv2.resize(img, dsize=(target_w, target_h))
+        img = cv2.resize(frames, dsize=(480, 360), interpolation=cv2.INTER_LINEAR)
         # =============================
 
         boxes, classes, t_pred = predict(img, model, detection_threshold=THRESHOLD)
-        pred_times.append(t_pred)
 
         #boxes, classes = keep_vehicles_only(boxes, classes)
         boxes, classes = keep_roadusers_only(boxes, classes)
@@ -272,9 +242,6 @@ def detect(frames, img_folder, model):
 
         if show_predictions:
             out_img = visualize(img, boxes, classes)
-            # plt.figure()
-            # plt.imshow(out_img)
-            # plt.show()
             name = str(i) + ".png"
             cv2.imwrite(str((out_dir / name).absolute()), out_img)
 
@@ -285,18 +252,7 @@ def detect(frames, img_folder, model):
         }
 
         detections.append(frame_preds)
-
-    avg_pred_time = sum(pred_times)/len(pred_times)
-    print(f"\nAverage time to estimate detections for single frame: {avg_pred_time:.3f} & {1/avg_pred_time:.1f} FPS")
+        print(f"\nTime to estimate detections for one frame: {t_pred:.3f} & {1/t_pred:.1f} FPS")
+    
           
     return detections
-    # json_save_path = Path(img_folder, f"frames.json")
-    
-    # if json_save_path.exists():
-    #     with open(json_save_path, "r") as read_file:
-    #         old_detections = json.load(read_file)
-    #         detections = old_detections + detections
-    # with open(json_save_path, "w") as write_file:
-    #     json.dump(detections, write_file)
-    #     print(f"Saved .json to {str(json_save_path)}")
-

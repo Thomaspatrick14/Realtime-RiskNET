@@ -55,7 +55,8 @@ def get_masks(detections, img_size, method, prior_method, divide=True):
             img_size, processed_boxes, divide_box_coordinates=divide)
         mask = mask * prior
         run_masks[0, step, :, :] = mask
-    return run_masks
+    # return run_masks
+    return run_masks, processed_boxes, boxes  # for debugging and visualization purposes
 
 def filter_boxes(boxes, classes, case, THRESHOLD=500):  # abblation study:
     num_boxes = boxes.shape[0]
@@ -103,8 +104,12 @@ def masks_from_boxes(img_size, boxes, divide_box_coordinates=True):
     """
     important note: the masks are calculated for the ORIGINAL size of the images, aka 360x480. Then resized to new size.
     """
-    h_new = img_size[0]
-    w_new = img_size[1]
+    if divide_box_coordinates:
+        h_new = img_size[0]
+        w_new = img_size[1]
+    else:
+        h_new = 360
+        w_new = 480
     mask = np.zeros((h_new, w_new))
     num_boxes = boxes.shape[0]
     if num_boxes == 0:
