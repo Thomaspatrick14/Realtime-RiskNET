@@ -5,7 +5,7 @@ import cv2
 from pathlib import Path
 
 
-def get_masks(detections, img_size, method, prior_method, divide=True):
+def get_masks(detections, img_size, method, prior_method, viz=False, divide=True):
     if not divide:
         print("WARNING: NOT DIVIDING BOX COORDINATES! Only allowed in visualization.")
 
@@ -55,9 +55,11 @@ def get_masks(detections, img_size, method, prior_method, divide=True):
             img_size, processed_boxes, divide_box_coordinates=divide)
         mask = mask * prior
         run_masks[0, step, :, :] = mask
-    # return run_masks
-    return run_masks, processed_boxes, boxes  # for debugging and visualization purposes
-
+    if viz:
+        return run_masks, processed_boxes, boxes # for debugging and visualization purposes
+    else:
+        return run_masks
+    
 def filter_boxes(boxes, classes, case, THRESHOLD=500):  # abblation study:
     num_boxes = boxes.shape[0]
     if num_boxes < 1:

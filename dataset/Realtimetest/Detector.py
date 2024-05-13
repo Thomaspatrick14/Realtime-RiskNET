@@ -13,6 +13,7 @@ import cv2
 from sys import platform
 from pathlib import Path
 import json
+from torchvision import transforms
 
 
 target_classes = (0, 1, 2, 3, 5, 7)
@@ -146,16 +147,14 @@ def keep_roadusers_only(boxes, classes):
 
 def predict(image, model, detection_threshold, cutoff_row=250):
     # cutoff_row = int(image.shape[0] * 0.955)
-    # image[cutoff_row:, :, :] = 0
-    # image = image.transpose((2, 0, 1))  # Faster R-CNN requires C, H, W
+    # image[cutoff_row:, :, :] = 0 #if the bonnet is visible, it will be detected as a car
     # image = normalize_zero_one(image) #normalization doesnt seem to work, YOLO isn't detecting anything
-    # image = torch.Tensor(image)
     # if torch.cuda.is_available():
     #     image = image.cuda()
     t_start = time.time()
-    output = model([image])
+    with torch.no_grad():
+        output = model(image)
     t_pred = time.time() - t_start
-    # output.show()
 
     # get all the predicited class names
     pred_bboxes = output.pred[0][:, :4].detach().cpu().numpy()
@@ -167,22 +166,6 @@ def predict(image, model, detection_threshold, cutoff_row=250):
     classes = pred_classes[pred_scores >= detection_threshold].astype(np.int32)
 
     return boxes, classes, t_pred
-
-
-coco_names = [
-    '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-    'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
-    'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-    'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
-    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
-    'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-    'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
-    'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
-    'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
-    'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
-]
 
 def detect(frames, img_folder, model):
     THRESHOLD = 0.5
@@ -252,7 +235,10 @@ def detect(frames, img_folder, model):
         }
 
         detections.append(frame_preds)
-        print(f"\nTime to estimate detections for one frame: {t_pred:.3f} & {1/t_pred:.1f} FPS")
+        try:
+            print(f"\nTime to estimate detections for one frame: {t_pred:.3f} & {1/t_pred:.1f} FPS")
+        except ZeroDivisionError:
+            print(f"\nTime to estimate detections for one frame: {t_pred:.6f}")
     
           
     return detections

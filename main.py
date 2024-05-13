@@ -17,6 +17,7 @@ from sys import platform
 from datetime import datetime
 from torchvision import transforms
 from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 from dataset.Realtimetest.real_inference_dataset import get_masks
 from dataset.Realtimetest.Detector import detect
@@ -319,7 +320,7 @@ if (not args.train) or args.test_exp:
 
     # Load the Detection model
     print(f"Loading the Detection model")
-    det_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+    det_model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
     if torch.cuda.is_available():
         print("CUDA available: loading the detection model on the GPU")
         det_model = det_model.cuda()
@@ -331,14 +332,14 @@ if (not args.train) or args.test_exp:
     print('-'*79 + "\nCold starting the models...")
     cold_frame = [np.ones((360, 480, 3)) for _ in range(8)]
     cold_frame = detect(cold_frame, folder_path, det_model)
-    cold_masks, _, _ = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior)
+    cold_masks, _, _ = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior, viz=True)
     cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
     test(cold_masks, pred_model)
 
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
     
-    video_path = os.path.join(folder_path, "output_c2b.mp4")  # Replace with the path to your video file
+    video_path = os.path.join(folder_path, "output_c2bt.mp4")  # Replace with the path to your video file
     cap = cv2.VideoCapture(video_path) # 0 for webcam
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -360,22 +361,21 @@ if (not args.train) or args.test_exp:
     height, width = 360, 480
 
     # Define video codec and create VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video_writer = cv2.VideoWriter('C:/Users/up650/Downloads/output_video.mp4', fourcc, 10, (width*2, height*2))
-
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # video_writer = cv2.VideoWriter('C:/Users/up650/Downloads/output_video.mp4', fourcc, 10, (width*2, height*2))
+    probs_list = []
     t1 = time.time()
     while True:
         t2 = time.time()
         ret, frame = cap.read()
         if not ret:
             break
-        # reshaping the frame to the required size
-        #if frame is not 480x360, resize it
-        if frame.shape[0] != 360 or frame.shape[1] != 480:
-            print(f"Resizing frame from {frame.shape} to {height}x{width}")
-            frame = cv2.resize(frame, (width, height))
         if frame_count == 0 or frame_count % multiple == 0:
-            mask, processed_boxes, dboxes = get_masks(detect(frame, folder_path, det_model), img_size, args.mask_method, args.mask_prior)
+            # reshaping the frame to the required size
+            #if frame is not 480x360, resize it
+            if frame.shape[0] != 360 or frame.shape[1] != 480:
+                frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
+            mask, processed_boxes, dboxes = get_masks(detect(frame, folder_path, det_model), img_size, args.mask_method, args.mask_prior, viz=True)
             dmask = mask[0,0,:,:]
             dmask = cv2.resize(dmask, (width, height))
             dmask = dmask.astype(np.uint8) * 255  # Multiply by 255 to convert bool to uint8
@@ -405,7 +405,8 @@ if (not args.train) or args.test_exp:
                 masks = torch.cat((masks, mask), dim=2)
 
             if masks.shape[2] == 8:
-                predictions = test(masks, pred_model)
+                predictions, probs = test(masks, pred_model, return_probs=True)
+                probs_list.append(probs[0])
                 print(f"Prediction: {predictions}")
                 masks = masks[:,:,1:,:,:]
                 print(f"Time for seq: {time.time() - t2:.4} s")    
@@ -414,12 +415,25 @@ if (not args.train) or args.test_exp:
                 if counter == 1:
                     print(f"Time for the first seq (8 detections + 1 prediction): {time.time() - t1:.4} s")
                     
-                # Plot the prediction for each frame
+                # Visualize the prediction for each frame
                 frame = cv2.putText(frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 combined_frame = np.hstack((np.vstack((frame, frame_with_processed_boxes)),np.vstack((frame_with_dboxes, dmask))))
+
+                # Create the plot
+                plt.plot(probs_list, color='blue')
+                plt.xlabel('Time step')
+                plt.ylabel('Probability of Collision Risk')
+                plt.title('Risk over time')
+                plt.ylim(0, 1)
+                plot = plt.gcf()
+                plot.canvas.draw()
+                plot_array = np.array(plot.canvas.renderer.buffer_rgba())
+
+                cv2.imshow('Plot', plot_array)
                 cv2.imshow('Visualizer', combined_frame)
+
                 # Write the combined frame to the video file
-                video_writer.write(combined_frame)
+                # video_writer.write(combined_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
 
@@ -428,11 +442,8 @@ if (not args.train) or args.test_exp:
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s")
     cap.release()
     cv2.destroyAllWindows()
-    video_writer.release()
+    # video_writer.release()
 
 print("-"*79, "\n", "-"*79, "\n" * 5)
 
-
-
 # python main.py --run_name Thesis_test --input mask --backbone ResNext18 --mask_method "case4"
-   
