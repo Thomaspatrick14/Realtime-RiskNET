@@ -53,7 +53,7 @@ class SiemensDataset(Dataset):
             if mode == 'val':
                 h_flip = False
         
-        exclude_frames = True # skips frames with labels -1
+        exclude_frames = False # skips frames with labels -1
 
         # below is to align 30 FPS real world and 20 FPS sim datasets
         # try everything down to 1 second
@@ -673,17 +673,19 @@ def get_data_as_sequences(data, sequence_info, step=2, label_mode=False, hflip=F
 # 20230926: Tim says: not very neat
 def get_sequence_info(labels, seq_len, skip_safe, skip_act, skip_urgent, skip_exclude, exclude_frames, skip_factor, safety_threshold, strat):
     sequence_info = []
-    labels = np.array(labels)
+    
     if exclude_frames:
+        labels = np.array(labels)
         mock = labels[labels != -1].copy()
+        mock[mock == 1] = 0
+        mock[mock == 2] = 1
     else:
         mock = labels.copy() 
 
     f_start = 0
     f_end = seq_len - 1
     
-    mock[mock == 1] = 0
-    mock[mock == 2] = 1
+    
 
     while f_end < (mock.shape[0] - 1):
         occ = np.count_nonzero(mock[f_start : f_end + 1] == 1)

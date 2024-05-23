@@ -1,6 +1,41 @@
+import os
+import cv2
+import time
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from dataset.Realtimetest.real_inference_dataset import get_masks
+from dataset.Realtimetest.Detector import detect
+from pred_models.create_model import get_model
+from TVT.test import test
+
+
 ##############################################################################################
 #################################       Append frames       ##################################
 ##############################################################################################
+def append_frames(folder_path, det_model, pred_model, args, img_size, video_path):
+    # Cold start the model
+    print('-'*79 + "\nCold starting the models...")
+    cold_frame = [np.ones((360, 480, 3)) for _ in range(8)]
+    cold_frame = detect(cold_frame, folder_path, det_model)
+    cold_masks = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior)
+    cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
+    test(cold_masks, pred_model)
+
+    # Start the camera/video
+    print('-'*79 + "\nStarting Camera...")
+    
+    cap = cv2.VideoCapture(video_path) # 0 for webcam
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    print(f"Video FPS: {fps}")
+    # if fps % 10 != 0:
+    #     print("\nFPS is not a multiple of 10. Please use a source with FPS as a multiple of 10")
+    #     exit()
+
+    multiple = int(fps / 10) # 10 is the frame rate of the model
+
+    video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
 
     frame_count = 0
     frames_to_process = []
@@ -53,22 +88,10 @@
     cap.release()
 
 
-    
-    # masks = get_masks(detections, img_size, args.mask_method, args.mask_prior)
-    # print(masks.shape)
-    # masks = torch.tensor(masks).unsqueeze(0).float()
-    # print(f"mask shape in main: {masks.shape}")
-    # print(f"Data type of mask: {masks.type()}")
-    
-    # python main.py --run_name Thesis_test --input mask --backbone ResNext18 --mask_method "case4"
-    
-print("-"*79, "\n", "-"*79, "\n" * 5)
-
-
 ##############################################################################################
 #################################     Append detections     ##################################
 ##############################################################################################
-
+def append_detections(folder_path, det_model, pred_model, args, img_size, video_path):
     # Cold start the model
     print('-'*79 + "\nCold starting the models...")
     cold_frame = [np.ones((360, 480, 3)) for _ in range(8)]
@@ -80,7 +103,6 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
     
-    video_path = os.path.join(folder_path, "output_c2bt.mp4")  # Replace with the path to your video file
     cap = cv2.VideoCapture(video_path) # 0 for webcam
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -144,19 +166,19 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
 ##############################################################################################
 ################################# Append detections + masks ##################################
 ##############################################################################################
-
-    # Cold start the model
+def append_detections_masks(folder_path, det_model, pred_model, args, img_size, video_path):
+    # Cold start the models
     print('-'*79 + "\nCold starting the models...")
-    cold_frame = [np.ones((360, 480, 3)) for _ in range(8)]
-    cold_frame = detect(cold_frame, folder_path, det_model)
+    cold_frame = np.ones((360, 480, 3))
+    cold_frame = detect(cold_frame, det_model)
     cold_masks = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior)
     cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
+    cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
     test(cold_masks, pred_model)
 
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
     
-    video_path = os.path.join(folder_path, "output.mp4")  # Replace with the path to your video file
     cap = cv2.VideoCapture(video_path) # 0 for webcam
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -174,65 +196,68 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
     first = True
     counter = 0
     t1 = time.time()
+    pred_list = []
     while True:
         t2 = time.time()
         ret, frame = cap.read()
         if not ret:
             break
 
-        if frame_count == 0 or frame_count % multiple == 0:
-            mask = get_masks(detect(frame, folder_path, det_model), img_size, args.mask_method, args.mask_prior)
-            mask = torch.tensor(mask).unsqueeze(0).float()
-            if first:
-                masks = mask
-                first = False
-            else:
-                masks = torch.cat((masks, mask), dim=2)
+        # if frame_count == 0 or frame_count % multiple == 0:
+        mask = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior)
+        mask = torch.tensor(mask).unsqueeze(0).float()
+        if first:
+            masks = mask.repeat(1, 1, 8, 1, 1)
+            first = False
+        else:
+            masks = torch.cat((masks, mask), dim=2)
 
-            if masks.shape[2] == 8:
-                predictions = test(masks, pred_model)
-                print(f"Prediction: {predictions}")
-                masks = masks[:,:,1:,:,:] 
-                counter += 1
-                neram = time.time() - t2  # neram = time
-                total_neram += neram
-                print(f"Sequence no.: {counter}")
-                if counter == 1:
-                    first_seq = time.time() - t1
-                    print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
-                else:
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
-                # Plot the prediction for each frame
-                # frame = cv2.putText(frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                # cv2.imshow('Frame', frame)
+        if masks.shape[2] == 8:
+            predictions = test(masks, pred_model)
+            pred_list.append(predictions[0])
+            print(f"Prediction: {predictions}")
+            masks = masks[:,:,1:,:,:] 
+            counter += 1
+            neram = time.time() - t2  # neram = time
+            total_neram += neram
+            print(f"Sequence no.: {counter}")
+            if counter == 1:
+                first_seq = time.time() - t1
+                print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+            else:
+                print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                
                 # if cv2.waitKey(1) & 0xFF == ord('q'):
                 #         break
         # if counter == 142: #for testing camera
         #     break
 
         frame_count += 1
+        
+    save_path = folder_path + '/predictions_labels_30to10fps' + '.csv'
+    pred_labels = np.array([pred_list])
+    np.savetxt(str(save_path), pred_labels, delimiter=',')
+    print(f"Saved predictions and labels to {save_path}")
 
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s \nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s \nAverage sequence time: {total_neram / counter:.4} s")
     cap.release()
 
-print("-"*79, "\n", "-"*79, "\n" * 5)
-
 ##############################################################################################
 ############################ Append detections + masks (visualize) ###########################
 ##############################################################################################
-
+def append_detections_masks_viz(folder_path, det_model, pred_model, args, img_size, video_path):
     # Cold start the model
+    viz=True
     print('-'*79 + "\nCold starting the models...")
     cold_frame = [np.ones((360, 480, 3)) for _ in range(8)]
-    cold_frame = detect(cold_frame, folder_path, det_model)
-    cold_masks, _, _ = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior, viz=True)
+    cold_frame = detect(cold_frame, det_model)
+    cold_masks, _, _ = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior, viz)
     cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
     test(cold_masks, pred_model)
 
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
     
-    video_path = os.path.join(folder_path, "output_c2bt.mp4")  # Replace with the path to your video file
     cap = cv2.VideoCapture(video_path) # 0 for webcam
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -246,6 +271,7 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
     video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
 
     frame_count = 0
+    total_neram = 0
     first = True
     counter = 0
     
@@ -257,6 +283,8 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
     # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     # video_writer = cv2.VideoWriter('C:/Users/up650/Downloads/output_video.mp4', fourcc, 10, (width*2, height*2))
     probs_list = []
+    neram_list = []
+    tpred_list = []
     t1 = time.time()
     while True:
         t2 = time.time()
@@ -268,7 +296,7 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
             #if frame is not 480x360, resize it
             if frame.shape[0] != 360 or frame.shape[1] != 480:
                 frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
-            mask, processed_boxes, dboxes = get_masks(detect(frame, folder_path, det_model), img_size, args.mask_method, args.mask_prior, viz=True)
+            mask, processed_boxes, dboxes = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior, viz)
             dmask = mask[0,0,:,:]
             dmask = cv2.resize(dmask, (width, height))
             dmask = dmask.astype(np.uint8) * 255  # Multiply by 255 to convert bool to uint8
@@ -298,43 +326,51 @@ print("-"*79, "\n", "-"*79, "\n" * 5)
                 masks = torch.cat((masks, mask), dim=2)
 
             if masks.shape[2] == 8:
-                predictions, probs = test(masks, pred_model, return_probs=True)
+                predictions, probs, tpred = test(masks, pred_model, return_probs=True)
                 probs_list.append(probs[0])
                 print(f"Prediction: {predictions}")
                 masks = masks[:,:,1:,:,:]
-                print(f"Time for seq: {time.time() - t2:.4} s")    
                 counter += 1
+                neram = time.time() - t2  # neram = time
+                total_neram += neram
+                neram_list.append(neram)
+                tpred_list.append(tpred)
                 print(f"Sequence no.: {counter}")
                 if counter == 1:
-                    print(f"Time for the first seq (8 detections + 1 prediction): {time.time() - t1:.4} s")
-                    
+                    first_seq = time.time() - t1
+                    print(f"Time for the first sequence (8 masks + 1 prediction): {first_seq:.4} s")
+                else:
+                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
                 # Visualize the prediction for each frame
                 frame = cv2.putText(frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 combined_frame = np.hstack((np.vstack((frame, frame_with_processed_boxes)),np.vstack((frame_with_dboxes, dmask))))
 
                 # Create the plot
-                plt.plot(probs_list, color='blue')
+                plt.plot(probs_list, color='blue', label='Probability')
+                plt.plot(neram_list, color='red', label='Seq. Time')
+                plt.plot(tpred_list, color='green', label='Prediction time')
                 plt.xlabel('Time step')
-                plt.ylabel('Probability of Collision Risk')
-                plt.title('Risk over time')
-                plt.ylim(0, 1)
+                plt.ylabel('Value')
+                plt.title('Risk, Time, and Tpred over Time')
+                # plt.ylim(0, 1)
+                plt.legend()
                 plot = plt.gcf()
                 plot.canvas.draw()
                 plot_array = np.array(plot.canvas.renderer.buffer_rgba())
 
                 cv2.imshow('Plot', plot_array)
+                plt.close()
                 cv2.imshow('Visualizer', combined_frame)
 
                 # Write the combined frame to the video file
                 # video_writer.write(combined_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
-
+        if frame_count == 1000: #for testing camera
+            break
         frame_count += 1
 
-    print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s")
+    print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s \nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s \nAverage sequence time: {total_neram / counter:.4} s")
     cap.release()
     cv2.destroyAllWindows()
     # video_writer.release()
-
-print("-"*79, "\n", "-"*79, "\n" * 5)

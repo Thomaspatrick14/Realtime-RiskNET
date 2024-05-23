@@ -2,3 +2,6 @@ runs/
 *.pyc
 *.mp4
 *.pt
+*.csv
+*.yml
+*.yaml

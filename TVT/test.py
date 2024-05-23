@@ -31,6 +31,6 @@ def test(masks, model, logger=None, print_pred=False, return_probs=False):
 
     print(f"Inference time {t_total:.4} s")
     if return_probs:
-        return predictions, col_probs
+        return predictions, col_probs, t_total
     else:
         return predictions

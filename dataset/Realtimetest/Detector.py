@@ -167,13 +167,8 @@ def predict(image, model, detection_threshold, cutoff_row=250):
 
     return boxes, classes, t_pred
 
-def detect(frames, img_folder, model):
+def detect(frames, model):
     THRESHOLD = 0.5
-    show_predictions = False  # put this on true for the first time you run a clip, in order to determine the cut value
-
-    if show_predictions:
-        out_dir = Path(img_folder, "detections")
-        os.makedirs(out_dir, exist_ok=True)
 
     detections = []
     pred_times = []
@@ -192,11 +187,6 @@ def detect(frames, img_folder, model):
             classes = classes.tolist()
             boxes = boxes.tolist()
             boxes, classes = combine_bboxes(boxes, classes)
-
-            if show_predictions:
-                out_img = visualize(img, boxes, classes)
-                name = str(i) + ".png"
-                cv2.imwrite(str((out_dir / name).absolute()), out_img)
 
             frame_preds = {
                 'Frame': i,
@@ -222,11 +212,6 @@ def detect(frames, img_folder, model):
         classes = classes.tolist()
         boxes = boxes.tolist()
         boxes, classes = combine_bboxes(boxes, classes)
-
-        if show_predictions:
-            out_img = visualize(img, boxes, classes)
-            name = str(i) + ".png"
-            cv2.imwrite(str((out_dir / name).absolute()), out_img)
 
         frame_preds = {
             'Frame': 0,
