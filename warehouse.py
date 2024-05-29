@@ -87,7 +87,6 @@ def append_frames(folder_path, det_model, pred_model, args, img_size, video_path
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s \nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s \nAverage sequence time: {total_neram/counter:.4} s")
     cap.release()
 
-
 ##############################################################################################
 #################################     Append detections     ##################################
 ##############################################################################################
@@ -175,6 +174,7 @@ def append_detections_masks(folder_path, det_model, pred_model, args, img_size, 
     cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
     cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
     test(cold_masks, pred_model)
+    test(cold_masks, pred_model)
 
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
@@ -189,10 +189,14 @@ def append_detections_masks(folder_path, det_model, pred_model, args, img_size, 
 
     multiple = int(fps / 10) # 10 is the frame rate of the model
 
-    video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
+    if video_path == 0 or video_path == 1:
+        video_duration = 0
+    else:
+        video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
 
     frame_count = 0
     total_neram = 0
+    tpred = 0
     first = True
     counter = 0
     t1 = time.time()
@@ -200,46 +204,53 @@ def append_detections_masks(folder_path, det_model, pred_model, args, img_size, 
     while True:
         t2 = time.time()
         ret, frame = cap.read()
+        # print(f"time for reading frame: {time.time() - t2:.4} s")
         if not ret:
             break
 
-        # if frame_count == 0 or frame_count % multiple == 0:
-        mask = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior)
-        mask = torch.tensor(mask).unsqueeze(0).float()
-        if first:
-            masks = mask.repeat(1, 1, 8, 1, 1)
-            first = False
-        else:
-            masks = torch.cat((masks, mask), dim=2)
-
-        if masks.shape[2] == 8:
-            predictions = test(masks, pred_model)
-            pred_list.append(predictions[0])
-            print(f"Prediction: {predictions}")
-            masks = masks[:,:,1:,:,:] 
-            counter += 1
-            neram = time.time() - t2  # neram = time
-            total_neram += neram
-            print(f"Sequence no.: {counter}")
-            if counter == 1:
-                first_seq = time.time() - t1
-                print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+        if frame_count == 0 or frame_count % multiple == 0:
+            mask = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior)
+            mask = torch.tensor(mask).unsqueeze(0).float()
+            if first:
+                masks = mask
+                first = False
             else:
-                print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
-                
-                # if cv2.waitKey(1) & 0xFF == ord('q'):
-                #         break
-        # if counter == 142: #for testing camera
-        #     break
+                masks = torch.cat((masks, mask), dim=2)
+
+            if masks.shape[2] == 8:
+                predictions, t_total = test(masks, pred_model)
+                tpred += t_total
+                pred_list.append(predictions[0])
+                print(f"Prediction: {predictions}")
+                masks = masks[:,:,1:,:,:]
+                counter += 1
+                neram = time.time() - t2  # neram = time
+                total_neram += neram
+                print(f"Sequence no.: {counter}")
+            
+                if counter == 1:
+                    first_seq = time.time() - t1
+                    print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                else:
+                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                    
+                    # if cv2.waitKey(1) & 0xFF == ord('q'):
+                    #         break
+        if frame_count == 1500: #for testing camera
+            break
 
         frame_count += 1
         
-    save_path = folder_path + '/predictions_labels_30to10fps' + '.csv'
-    pred_labels = np.array([pred_list])
-    np.savetxt(str(save_path), pred_labels, delimiter=',')
-    print(f"Saved predictions and labels to {save_path}")
+    # save_path = folder_path + '/csv' + '/ydid_clip5_predictions_labels_30to10_fps' + '.csv'
+    # pred_labels = np.array([pred_list])
+    # np.savetxt(str(save_path), pred_labels, delimiter=',')
+    # print(f"Saved predictions and labels to {save_path}")
 
-    print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s \nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s \nAverage sequence time: {total_neram / counter:.4} s")
+    print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s"
+          f"\nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s" 
+          f"\nAverage sequence time: {total_neram / counter:.4} s" 
+          f"\nAverage prediction time: {tpred / counter:.4} s")
     cap.release()
 
 ##############################################################################################
@@ -345,29 +356,29 @@ def append_detections_masks_viz(folder_path, det_model, pred_model, args, img_si
                 frame = cv2.putText(frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 combined_frame = np.hstack((np.vstack((frame, frame_with_processed_boxes)),np.vstack((frame_with_dboxes, dmask))))
 
-                # Create the plot
-                plt.plot(probs_list, color='blue', label='Probability')
-                plt.plot(neram_list, color='red', label='Seq. Time')
-                plt.plot(tpred_list, color='green', label='Prediction time')
-                plt.xlabel('Time step')
-                plt.ylabel('Value')
-                plt.title('Risk, Time, and Tpred over Time')
-                # plt.ylim(0, 1)
-                plt.legend()
-                plot = plt.gcf()
-                plot.canvas.draw()
-                plot_array = np.array(plot.canvas.renderer.buffer_rgba())
+                # # Create the plot
+                # plt.plot(probs_list, color='blue', label='Probability')
+                # plt.plot(neram_list, color='red', label='Seq. Time')
+                # plt.plot(tpred_list, color='green', label='Prediction time')
+                # plt.xlabel('Time step')
+                # plt.ylabel('Value')
+                # plt.title('Risk, Time, and Tpred over Time')
+                # # plt.ylim(0, 1)
+                # plt.legend()
+                # plot = plt.gcf()
+                # plot.canvas.draw()
+                # plot_array = np.array(plot.canvas.renderer.buffer_rgba())
 
-                cv2.imshow('Plot', plot_array)
-                plt.close()
+                # cv2.imshow('Plot', plot_array)
+                # plt.close()
                 cv2.imshow('Visualizer', combined_frame)
 
                 # Write the combined frame to the video file
                 # video_writer.write(combined_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
-        if frame_count == 1000: #for testing camera
-            break
+        # if frame_count == 1000: #for testing camera
+        #     break
         frame_count += 1
 
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s \nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s \nAverage sequence time: {total_neram / counter:.4} s")

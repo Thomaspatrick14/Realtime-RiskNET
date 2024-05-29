@@ -5,13 +5,9 @@ from torch.autograd import Variable
 
 
 def test(masks, model, logger=None, print_pred=False, return_probs=False):
-    # print(model)
     t1 = time.time()
     predictions = []
     col_probs = []
-    
-    # for input_mask in masks:
-    # print(f"Mask shape in test: {masks.shape}")
     if torch.cuda.is_available():
         masks = masks.cuda()
 
@@ -33,4 +29,4 @@ def test(masks, model, logger=None, print_pred=False, return_probs=False):
     if return_probs:
         return predictions, col_probs, t_total
     else:
-        return predictions
+        return predictions, t_total
