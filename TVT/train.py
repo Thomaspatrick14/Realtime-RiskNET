@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import matplotlib.pyplot as plt
 
 
-def train_epoch(epoch, data_loader, model, criterion, optimizer, scheduler, writer, epoch_logger, batch_logger):
+def train_epoch(epoch, data_loader, model, criterion, optimizer, scheduler, epoch_logger, batch_logger):
     print("\n" * 1, "-"*79, "\n" * 1)
     print("Epoch {}".format(epoch))
     print("\n" * 1)
@@ -73,9 +73,9 @@ def train_epoch(epoch, data_loader, model, criterion, optimizer, scheduler, writ
             'lr': optimizer.param_groups[0]['lr'],
         })
 
-    writer.add_scalar('training loss', losses.avg.item(), epoch)
-    writer.add_scalar('acc', accs.avg.item(), epoch)
-    writer.add_scalar('f1', fscores.avg.item(), epoch)
+    # writer.add_scalar('training loss', losses.avg.item(), epoch)
+    # writer.add_scalar('acc', accs.avg.item(), epoch)
+    # writer.add_scalar('f1', fscores.avg.item(), epoch)
 
     print(f"Epoch: [{epoch}][mean]\t Loss: {losses.avg.item():.3f} \t Accuracy (balanced) {accs.avg.item():.3f}\t"
           f"Precision {precs.avg.item():.3f}\t Recall {recalls.avg.item():.3f} \t F-score {fscores.avg.item():.3f}"

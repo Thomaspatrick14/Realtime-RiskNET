@@ -1,15 +1,12 @@
 import torch
-# from yolodet import det_model
 from torch.autograd import Variable
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from torch import optim
-from torch.utils.tensorboard import SummaryWriter
-import torchvision
+# from torch.utils.tensorboard import SummaryWriter
 import time
 import argparse
 import numpy as np
-import math
 import os
 import json
 from pathlib import Path
@@ -28,7 +25,6 @@ from pred_models.create_model import get_model
 from dataset.dataset import SiemensDataset, MaskNoise
 from TVT.utils import *
 from warehouse import *
-import cv2
 import os
 
 
@@ -154,7 +150,7 @@ if (len(tensorboard_files) > 0) and args.train:
 
 if args.train:
     # tensorboard
-    writer = SummaryWriter(run_path + '/tensorboard')
+    # writer = SummaryWriter(run_path + '/tensorboard')
 
     # Load the model
     model = get_model(args)
@@ -214,8 +210,8 @@ if args.train:
     for epoch in range(args.n_epochs):
         t_start_epoch = time.time()
         is_best = False
-        writer.add_scalar('Learning rate', optimizer.param_groups[0]['lr'], epoch)
-        fscore, loss = train_epoch(epoch, train_data_loader, model, criterion, optimizer, scheduler, writer,
+        # writer.add_scalar('Learning rate', optimizer.param_groups[0]['lr'], epoch)
+        fscore, loss = train_epoch(epoch, train_data_loader, model, criterion, optimizer, scheduler,
                                    train_logger, train_batch_logger)
         save_name = '/checkpoint_' + str(epoch) + '.pth'
         torch.save(model.state_dict(), run_path + save_name)
@@ -223,7 +219,7 @@ if args.train:
         # is_best = loss < best_loss
         print("Epoch {} trained in {:.2f} s".format(epoch, time.time() - t_start_epoch))
         print("\n" * 1)
-        val_fscore, val_loss = val_epoch(epoch, val_data_loader, model, criterion, writer, val_logger)
+        val_fscore, val_loss = val_epoch(epoch, val_data_loader, model, criterion, val_logger)
         print("Epoch {} validated in {:.2f} s".format(epoch, time.time() - t_start_epoch))
 
         train_losses.append(loss)
@@ -276,7 +272,7 @@ if args.train:
 
     print("Total train time: {:.1f} minutes".format((time.time() - t_start_train) / 60))
 
-    writer.close()
+    # writer.close()
 
 ########################################################################################################################################
                                                 ######### Testing loop ###########
@@ -316,7 +312,7 @@ if (not args.train) or args.test_exp:
     if platform == "win32":
         pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth', map_location=torch.device('cpu')))
     else:
-        model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth'))
+        pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth'))
     pred_model.eval()
     Path(run_path).mkdir(parents=True, exist_ok=True)
 
@@ -329,10 +325,10 @@ if (not args.train) or args.test_exp:
     det_model.eval()
 
     folder_path = os.path.dirname(os.path.abspath(__file__))
-    # video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
-    video_path = 0  # Replace with 0 to use webcam
-    append_detections_masks(folder_path, det_model, pred_model, args, img_size, video_path)
-    # append_detections_masks_viz(folder_path, det_model, pred_model, args, img_size, video_path)
+    video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
+    # video_path = 0  # Replace with 0 to use webcam
+    append_detections_masks(det_model, pred_model, args, img_size, video_path)
+    # append_detections_masks_viz(det_model, pred_model, args, img_size, video_path)
 
 print("-"*79, "\n", "-"*79, "\n" * 5)
 

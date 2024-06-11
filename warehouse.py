@@ -1,4 +1,3 @@
-import os
 import cv2
 import time
 import numpy as np
@@ -6,7 +5,6 @@ import torch
 import matplotlib.pyplot as plt
 from dataset.Realtimetest.real_inference_dataset import get_masks
 from dataset.Realtimetest.Detector import detect
-from pred_models.create_model import get_model
 from TVT.test import test
 
 
@@ -165,7 +163,7 @@ def append_detections(folder_path, det_model, pred_model, args, img_size, video_
 ##############################################################################################
 ################################# Append detections + masks ##################################
 ##############################################################################################
-def append_detections_masks(folder_path, det_model, pred_model, args, img_size, video_path):
+def append_detections_masks(det_model, pred_model, args, img_size, video_path):
     # Cold start the models
     print('-'*79 + "\nCold starting the models...")
     cold_frame = np.ones((360, 480, 3))
@@ -256,7 +254,7 @@ def append_detections_masks(folder_path, det_model, pred_model, args, img_size, 
 ##############################################################################################
 ############################ Append detections + masks (visualize) ###########################
 ##############################################################################################
-def append_detections_masks_viz(folder_path, det_model, pred_model, args, img_size, video_path):
+def append_detections_masks_viz(det_model, pred_model, args, img_size, video_path):
     # Cold start the model
     viz=True
     print('-'*79 + "\nCold starting the models...")
@@ -295,7 +293,7 @@ def append_detections_masks_viz(folder_path, det_model, pred_model, args, img_si
     # video_writer = cv2.VideoWriter('C:/Users/up650/Downloads/output_video.mp4', fourcc, 10, (width*2, height*2))
     probs_list = []
     neram_list = []
-    tpred_list = []
+    tpred_list = 0
     t1 = time.time()
     while True:
         t2 = time.time()
@@ -345,7 +343,7 @@ def append_detections_masks_viz(folder_path, det_model, pred_model, args, img_si
                 neram = time.time() - t2  # neram = time
                 total_neram += neram
                 neram_list.append(neram)
-                tpred_list.append(tpred)
+                tpred_list += tpred
                 print(f"Sequence no.: {counter}")
                 if counter == 1:
                     first_seq = time.time() - t1
@@ -381,7 +379,10 @@ def append_detections_masks_viz(folder_path, det_model, pred_model, args, img_si
         #     break
         frame_count += 1
 
-    print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s \nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s \nAverage sequence time: {total_neram / counter:.4} s")
+    print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s"
+          f"\nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s" 
+          f"\nAverage sequence time: {total_neram / counter:.4} s" 
+          f"\nAverage prediction time: {tpred_list / counter:.4} s")
     cap.release()
     cv2.destroyAllWindows()
     # video_writer.release()

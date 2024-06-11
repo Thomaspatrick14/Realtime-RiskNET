@@ -133,7 +133,7 @@ def masks_from_boxes(img_size, boxes, divide_box_coordinates=True):
     # resize the mask to new size
     mask = mask.astype(np.uint8)
     # mask = cv2.resize(mask, dsize=(w_new, h_new))
-    return mask.astype(np.bool)
+    return mask.astype(np.bool_)
 
 def create_circular_mask(h, w, center, radius):
     Y, X = np.ogrid[:h, :w]

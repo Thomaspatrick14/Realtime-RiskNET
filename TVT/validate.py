@@ -5,7 +5,7 @@ from TVT.utils import *
 import time
 
 
-def val_epoch(epoch, data_loader, model, criterion, writer, logger):
+def val_epoch(epoch, data_loader, model, criterion, logger):
     model.eval()
 
     losses = AverageMeter()
@@ -30,7 +30,7 @@ def val_epoch(epoch, data_loader, model, criterion, writer, logger):
             outputs = model(input_flow, input_depth, input_rgb, input_masks)
 
         loss = criterion(outputs, targets.type(torch.int64))
-        writer.add_scalar('validation loss', loss.data, epoch * len(data_loader) + i)
+        # writer.add_scalar('validation loss', loss.data, epoch * len(data_loader) + i)
 
         values, preds = torch.max(outputs, 1)
         targets_list = targets.cpu().detach().tolist()
