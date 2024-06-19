@@ -1,7 +1,5 @@
-import numpy as np
 import torch
 import time
-from torch.autograd import Variable
 
 
 def test(masks, model, logger=None, print_pred=False, return_probs=False):
@@ -18,7 +16,7 @@ def test(masks, model, logger=None, print_pred=False, return_probs=False):
     probs = outputs[:, 1].cpu().detach().tolist()
 
     col_probs = probs
-    predictions = preds.tolist()
+    predictions = preds.cpu().detach().tolist()
 
     if print_pred:
         print(f"Prediction: {predictions}")

@@ -27,7 +27,6 @@ from TVT.utils import *
 from warehouse import *
 import os
 
-
 if platform == "win32":
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # unsupported workaround for OMP: Error #15 on WIN32
 
@@ -322,13 +321,20 @@ if (not args.train) or args.test_exp:
     if torch.cuda.is_available():
         print("CUDA available: loading the detection model on the GPU")
         det_model = det_model.cuda()
-    det_model.eval()
+    # det_model.eval()
+    # input_data = torch.randn(1, 3, 640, 480)
+    # trt_model = torch_tensorrt.compile(det_model, inputs=[input_data],
+    #                                ir='ts',
+    #                                enabled_precisions={torch.float16},
+    #                                truncate_long_and_double=True)
+
+
 
     folder_path = os.path.dirname(os.path.abspath(__file__))
-    video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
-    # video_path = 0  # Replace with 0 to use webcam
-    append_detections_masks(det_model, pred_model, args, img_size, video_path)
-    # append_detections_masks_viz(det_model, pred_model, args, img_size, video_path)
+    # video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
+    video_path = 0 # Replace with 0 to use webcam
+    # append_detections_masks(det_model, pred_model, args, img_size, video_path)
+    append_detections_masks_viz(det_model, pred_model, args, img_size, video_path)
 
 print("-"*79, "\n", "-"*79, "\n" * 5)
 

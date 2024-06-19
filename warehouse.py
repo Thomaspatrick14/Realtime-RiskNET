@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from dataset.Realtimetest.real_inference_dataset import get_masks
 from dataset.Realtimetest.Detector import detect
 from TVT.test import test
-
+import os
+from TVT.utils import *
 
 ##############################################################################################
 #################################       Append frames       ##################################
@@ -165,14 +166,13 @@ def append_detections(folder_path, det_model, pred_model, args, img_size, video_
 ##############################################################################################
 def append_detections_masks(det_model, pred_model, args, img_size, video_path):
     # Cold start the models
-    print('-'*79 + "\nCold starting the models...")
-    cold_frame = np.ones((360, 480, 3))
-    cold_frame = detect(cold_frame, det_model)
-    cold_masks = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior)
-    cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
-    cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
-    test(cold_masks, pred_model)
-    test(cold_masks, pred_model)
+    # print('-'*79 + "\nCold starting the models...")
+    # cold_frame = np.ones((360, 480, 3))
+    # cold_masks = get_masks(detect(cold_frame, det_model), img_size, args.mask_method, args.mask_prior)
+    # cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
+    # cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
+    # test(cold_masks, pred_model)
+    # test(cold_masks, pred_model)
 
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
@@ -206,37 +206,37 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
         if not ret:
             break
 
-        if frame_count == 0 or frame_count % multiple == 0:
-            mask = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior)
-            mask = torch.tensor(mask).unsqueeze(0).float()
-            if first:
-                masks = mask
-                first = False
-            else:
-                masks = torch.cat((masks, mask), dim=2)
+        # if frame_count == 0 or frame_count % multiple == 0:
+        mask = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior)
+        mask = torch.tensor(mask).unsqueeze(0).float()
+        if first:
+            masks = mask
+            first = False
+        else:
+            masks = torch.cat((masks, mask), dim=2)
 
-            if masks.shape[2] == 8:
-                predictions, t_total = test(masks, pred_model)
-                tpred += t_total
-                pred_list.append(predictions[0])
-                print(f"Prediction: {predictions}")
-                masks = masks[:,:,1:,:,:]
-                counter += 1
-                neram = time.time() - t2  # neram = time
-                total_neram += neram
-                print(f"Sequence no.: {counter}")
-            
-                if counter == 1:
-                    first_seq = time.time() - t1
-                    print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
-                else:
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
-                    
-                    # if cv2.waitKey(1) & 0xFF == ord('q'):
-                    #         break
-        if frame_count == 1500: #for testing camera
-            break
+        if masks.shape[2] == 8:
+            predictions, t_total = test(masks, pred_model)
+            tpred += t_total
+            pred_list.append(predictions[0])
+            print(f"Prediction: {predictions}")
+            masks = masks[:,:,1:,:,:]
+            counter += 1
+            neram = time.time() - t2  # neram = time
+            total_neram += neram
+            print(f"Sequence no.: {counter}")
+        
+            if counter == 1:
+                first_seq = time.time() - t1
+                print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+                print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+            else:
+                print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                
+                # if cv2.waitKey(1) & 0xFF == ord('q'):
+                #         break
+        # if frame_count == 1500: #for testing camera
+        #     break
 
         frame_count += 1
         
@@ -255,13 +255,15 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
 ############################ Append detections + masks (visualize) ###########################
 ##############################################################################################
 def append_detections_masks_viz(det_model, pred_model, args, img_size, video_path):
+    
     # Cold start the model
     viz=True
     print('-'*79 + "\nCold starting the models...")
-    cold_frame = [np.ones((360, 480, 3)) for _ in range(8)]
-    cold_frame = detect(cold_frame, det_model)
-    cold_masks, _, _ = get_masks(cold_frame, img_size, args.mask_method, args.mask_prior, viz)
+    cold_frame = np.ones((360, 480, 3))
+    cold_masks = get_masks(detect(cold_frame, det_model), img_size, args.mask_method, args.mask_prior)
     cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
+    cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
+    test(cold_masks, pred_model)
     test(cold_masks, pred_model)
 
     # Start the camera/video
@@ -271,6 +273,7 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     print(f"Video FPS: {fps}")
+    print(f"camera resolution: {cap.get(cv2.CAP_PROP_FRAME_WIDTH)} x {cap.get(cv2.CAP_PROP_FRAME_HEIGHT)}")
     # if fps % 10 != 0:
     #     print("\nFPS is not a multiple of 10. Please use a source with FPS as a multiple of 10")
     #     exit()
@@ -291,7 +294,16 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
     # Define video codec and create VideoWriter object
     # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     # video_writer = cv2.VideoWriter('C:/Users/up650/Downloads/output_video.mp4', fourcc, 10, (width*2, height*2))
+
+    # For ablation study
+    # labels_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "labels.csv")
+    # run_labels_data = np.loadtxt(labels_path, delimiter=',')
+    # run_labels_data[run_labels_data == 1] = 0
+    # run_labels_data[run_labels_data == 2] = 1
+    
     probs_list = []
+    preds_list = []
+    # label_list = [] # for ablation study
     neram_list = []
     tpred_list = 0
     t1 = time.time()
@@ -305,6 +317,8 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
             #if frame is not 480x360, resize it
             if frame.shape[0] != 360 or frame.shape[1] != 480:
                 frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
+            # if run_labels_data[frame_count] == -1: # For ablation study
+            #     break
             mask, processed_boxes, dboxes = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior, viz)
             dmask = mask[0,0,:,:]
             dmask = cv2.resize(dmask, (width, height))
@@ -312,14 +326,15 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
             dmask = np.expand_dims(dmask, axis=-1)
             dmask = np.repeat(dmask, 3, axis=-1)  # Repeat the dimension three times
             dmask = cv2.putText(dmask, f"Attention Masks", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            # Display dboxes overlayed on current frame
+
+            # Display Bounding boxes overlayed on current frame
             frame_with_dboxes = frame.copy()
             for box1 in dboxes:
                 x, y, x2, y2 = box1
                 cv2.rectangle(frame_with_dboxes, (x, y), (x2, y2), (0, 255, 0), 2)
             frame_with_dboxes = cv2.putText(frame_with_dboxes, f"Actual Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-            # Display processed_boxes overlayed on current frame
+            # Display processed_Bboxes overlayed on current frame
             frame_with_processed_boxes = frame.copy()
             for box2 in processed_boxes:
                 x, y, x2, y2 = box2
@@ -337,7 +352,9 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
             if masks.shape[2] == 8:
                 predictions, probs, tpred = test(masks, pred_model, return_probs=True)
                 probs_list.append(probs[0])
-                print(f"Prediction: {predictions}")
+                preds_list.append(predictions[0])
+                # label_list.append(run_labels_data[frame_count]) # for ablation study
+
                 masks = masks[:,:,1:,:,:]
                 counter += 1
                 neram = time.time() - t2  # neram = time
@@ -375,10 +392,14 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
                 # video_writer.write(combined_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
-        # if frame_count == 1000: #for testing camera
-        #     break
+        if frame_count == 1000: #for testing camera
+            break
         frame_count += 1
 
+    # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
+    
+    # print(f"Prediction: {preds_list} length: {len(preds_list)} \nLabels: {label_list} length: {len(label_list)}"
+        #   f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s"
           f"\nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s" 
           f"\nAverage sequence time: {total_neram / counter:.4} s" 

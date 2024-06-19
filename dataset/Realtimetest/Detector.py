@@ -149,81 +149,75 @@ def predict(image, model, detection_threshold, cutoff_row=250):
     # cutoff_row = int(image.shape[0] * 0.955)
     # image[cutoff_row:, :, :] = 0 #if the bonnet is visible, it will be detected as a car
     # image = normalize_zero_one(image) #normalization doesnt seem to work, YOLO isn't detecting anything
-    # if torch.cuda.is_available():
-    #     image = image.cuda()
+
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # image = image.transpose((2, 0, 1))
+    # print(f"Shape of the image {image.shape}")
+    # image = torch.from_numpy(image).to(device)
+    # image = image.float().div(255.0).unsqueeze(0)
+
     t_start = time.time()
     with torch.no_grad():
         output = model(image)
     t_pred = time.time() - t_start
+    print(f"Time taken: {t_pred}")
+    
+    ## get all the predicited class names
 
-    # get all the predicited class names
+    # if image is loaded to cuda
+    # pred_bboxes = output[0][:, :4].detach().cpu().numpy()
+    # pred_scores = output[0][:, 4].detach().cpu().numpy()
+    # pred_classes = output[0][:, 5].detach().cpu().numpy().astype(int)
+
+    # if image is not loaded to cuda
     pred_bboxes = output.pred[0][:, :4].detach().cpu().numpy()
     pred_scores = output.pred[0][:, 4].detach().cpu().numpy()
     pred_classes = output.pred[0][:, 5].detach().cpu().numpy().astype(int)
 
     # get boxes and classes above the threshold score
-    boxes = pred_bboxes[pred_scores >= detection_threshold].astype(np.int32)
+    boxes = pred_bboxes[pred_scores >= detection_threshold].astype(np.int32) # size of (x,4) where x is the number of detections and y is Xmin, Ymin, Xmax, Ymax
     classes = pred_classes[pred_scores >= detection_threshold].astype(np.int32)
 
+    # Scale the bounding boxes from 640x480 to 480x360
+    # ratio = 360 / 480
+    # boxes[:, :] = boxes[:, :] * ratio
+
+    print(f"Shape of boxes: {boxes.shape}")
     return boxes, classes, t_pred
 
 def detect(frames, model):
     THRESHOLD = 0.5
 
     detections = []
-    pred_times = []
-    t = time.time()
-    
-    if isinstance(frames, list):
-        for i, frame in enumerate(frames):
 
-            img = cv2.resize(frame, dsize=(480, 360), interpolation=cv2.INTER_LINEAR)
-            # =============================
-            boxes, classes, t_pred = predict(img, model, detection_threshold=THRESHOLD)
-            pred_times.append(t_pred)
+    # =============================
+    # Resize the image to 640x480 (Yolo model expects dimensions which are a multiple of 32)
+    # width, height = 640, 480    # for cuda loaded image
+    width, height = 480, 360
+    img = cv2.resize(frames, (width, height), interpolation=cv2.INTER_LINEAR)
+    # =============================
 
-            boxes, classes = keep_roadusers_only(boxes, classes)
+    boxes, classes, t_pred = predict(img, model, detection_threshold=THRESHOLD)
 
-            classes = classes.tolist()
-            boxes = boxes.tolist()
-            boxes, classes = combine_bboxes(boxes, classes)
+    #boxes, classes = keep_vehicles_only(boxes, classes)
+    boxes, classes = keep_roadusers_only(boxes, classes)
 
-            frame_preds = {
-                'Frame': i,
-                'Classes': classes,  # we won't use them (yet)
-                'BBoxes': boxes
-            }
+    classes = classes.tolist()
+    boxes = boxes.tolist()
+    boxes, classes = combine_bboxes(boxes, classes)
 
-            
-            # combine
+    frame_preds = {
+        'Frame': 0,
+        'Classes': classes,  # we won't use them (yet)
+        'BBoxes': boxes
+    }
 
-            detections.append(frame_preds)
-        avg_pred_time = sum(pred_times)/len(pred_times)
-        print(f"\nTime to estimate detections for this list of frames: {avg_pred_time:.3f} & {1/avg_pred_time:.1f} FPS")
-    else:
-        img = cv2.resize(frames, dsize=(480, 360), interpolation=cv2.INTER_LINEAR)
-        # =============================
-
-        boxes, classes, t_pred = predict(img, model, detection_threshold=THRESHOLD)
-
-        #boxes, classes = keep_vehicles_only(boxes, classes)
-        boxes, classes = keep_roadusers_only(boxes, classes)
-
-        classes = classes.tolist()
-        boxes = boxes.tolist()
-        boxes, classes = combine_bboxes(boxes, classes)
-
-        frame_preds = {
-            'Frame': 0,
-            'Classes': classes,  # we won't use them (yet)
-            'BBoxes': boxes
-        }
-
-        detections.append(frame_preds)
-        try:
-            print(f"\nTime to estimate detections for one frame: {t_pred:.3f} & {1/t_pred:.1f} FPS")
-        except ZeroDivisionError:
-            print(f"\nTime to estimate detections for one frame: {t_pred:.6f}")
+    detections.append(frame_preds)
+    try:
+        print(f"\nTime to estimate detections for one frame: {t_pred:.3f} & {1/t_pred:.1f} FPS")
+    except ZeroDivisionError:
+        print(f"\nTime to estimate detections for one frame: {t_pred:.6f}")
     
           
     return detections
