@@ -164,15 +164,16 @@ def append_detections(folder_path, det_model, pred_model, args, img_size, video_
 ##############################################################################################
 ################################# Append detections + masks ##################################
 ##############################################################################################
-def append_detections_masks(det_model, pred_model, args, img_size, video_path):
+def append_detections_masks(det_model, pred_model, args, img_size, video_path, labels_path, preds_list, label_list):    # For ablation study
+# def append_detections_masks(det_model, pred_model, args, img_size, video_path):
     # Cold start the models
-    # print('-'*79 + "\nCold starting the models...")
-    # cold_frame = np.ones((360, 480, 3))
-    # cold_masks = get_masks(detect(cold_frame, det_model), img_size, args.mask_method, args.mask_prior)
-    # cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
-    # cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
-    # test(cold_masks, pred_model)
-    # test(cold_masks, pred_model)
+    print('-'*79 + "\nCold starting the models...")
+    cold_frame = np.ones((360, 480, 3))
+    cold_masks = get_masks(detect(cold_frame, det_model), img_size, args.mask_method, args.mask_prior)
+    cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
+    cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
+    test(cold_masks, pred_model)
+    test(cold_masks, pred_model)
 
     # Start the camera/video
     print('-'*79 + "\nStarting Camera...")
@@ -192,6 +193,11 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
     else:
         video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
 
+    # For ablation study
+    run_labels_data = np.loadtxt(labels_path, delimiter=',')
+    run_labels_data[run_labels_data == 1] = 0
+    run_labels_data[run_labels_data == 2] = 1
+
     frame_count = 0
     total_neram = 0
     tpred = 0
@@ -207,6 +213,8 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
             break
 
         # if frame_count == 0 or frame_count % multiple == 0:
+        if run_labels_data[frame_count] == -1: # For ablation study
+                break
         mask = get_masks(detect(frame, det_model), img_size, args.mask_method, args.mask_prior)
         mask = torch.tensor(mask).unsqueeze(0).float()
         if first:
@@ -215,8 +223,10 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
         else:
             masks = torch.cat((masks, mask), dim=2)
 
-        if masks.shape[2] == 8:
+        if masks.shape[2] == 16:
             predictions, t_total = test(masks, pred_model)
+            preds_list.append(predictions[0]) # for ablation study
+            label_list.append(run_labels_data[frame_count]) # for ablation study
             tpred += t_total
             pred_list.append(predictions[0])
             print(f"Prediction: {predictions}")
@@ -235,15 +245,10 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
                 
                 # if cv2.waitKey(1) & 0xFF == ord('q'):
                 #         break
-        # if frame_count == 1500: #for testing camera
-        #     break
+        if frame_count == 500: #for testing camera
+            break
 
         frame_count += 1
-        
-    # save_path = folder_path + '/csv' + '/ydid_clip5_predictions_labels_30to10_fps' + '.csv'
-    # pred_labels = np.array([pred_list])
-    # np.savetxt(str(save_path), pred_labels, delimiter=',')
-    # print(f"Saved predictions and labels to {save_path}")
 
     print(f"\nVideo Duration: {video_duration} s \nTotal processing time: {time.time() - t1:.4} s"
           f"\nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s" 
@@ -254,6 +259,7 @@ def append_detections_masks(det_model, pred_model, args, img_size, video_path):
 ##############################################################################################
 ############################ Append detections + masks (visualize) ###########################
 ##############################################################################################
+# def append_detections_masks_viz(det_model, pred_model, args, img_size, video_path, labels_path, preds_list, label_list):    # For ablation study
 def append_detections_masks_viz(det_model, pred_model, args, img_size, video_path):
     
     # Cold start the model
@@ -296,14 +302,11 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
     # video_writer = cv2.VideoWriter('C:/Users/up650/Downloads/output_video.mp4', fourcc, 10, (width*2, height*2))
 
     # For ablation study
-    # labels_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "labels.csv")
     # run_labels_data = np.loadtxt(labels_path, delimiter=',')
     # run_labels_data[run_labels_data == 1] = 0
     # run_labels_data[run_labels_data == 2] = 1
     
     probs_list = []
-    preds_list = []
-    # label_list = [] # for ablation study
     neram_list = []
     tpred_list = 0
     t1 = time.time()
@@ -352,7 +355,7 @@ def append_detections_masks_viz(det_model, pred_model, args, img_size, video_pat
             if masks.shape[2] == 8:
                 predictions, probs, tpred = test(masks, pred_model, return_probs=True)
                 probs_list.append(probs[0])
-                preds_list.append(predictions[0])
+                # preds_list.append(predictions[0]) # for ablation study
                 # label_list.append(run_labels_data[frame_count]) # for ablation study
 
                 masks = masks[:,:,1:,:,:]

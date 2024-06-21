@@ -161,7 +161,7 @@ def predict(image, model, detection_threshold, cutoff_row=250):
     with torch.no_grad():
         output = model(image)
     t_pred = time.time() - t_start
-    print(f"Time taken: {t_pred}")
+    # print(f"Time taken: {t_pred}")
     
     ## get all the predicited class names
 
@@ -182,8 +182,6 @@ def predict(image, model, detection_threshold, cutoff_row=250):
     # Scale the bounding boxes from 640x480 to 480x360
     # ratio = 360 / 480
     # boxes[:, :] = boxes[:, :] * ratio
-
-    print(f"Shape of boxes: {boxes.shape}")
     return boxes, classes, t_pred
 
 def detect(frames, model):

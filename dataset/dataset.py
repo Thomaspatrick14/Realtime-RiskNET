@@ -32,6 +32,13 @@ class SiemensDataset(Dataset):
     def __init__(self, mode, args, transform=None):
         img_size = [int(960 / args.downscale_factor),
                     int(1280 / args.downscale_factor)]
+        
+        if mode == 'val': # 21/06/2024: Makes val set the real world dataset
+            args.dataset = 'real_world_08'
+            mode == 'test'
+            args.mask_method = 'case4'
+            
+
         if args.dataset in ['real_world', 'real_world_08', 'real_world_09']:
             real_world = True
         else:
@@ -53,12 +60,12 @@ class SiemensDataset(Dataset):
             if mode == 'val':
                 h_flip = False
         
-        exclude_frames = False # skips frames with labels -1
+        exclude_frames = True # skips frames with labels -1
 
         # below is to align 30 FPS real world and 20 FPS sim datasets
         # try everything down to 1 second
         step = args.step
-        assert step == 2, "Step needs to be 2 in order to hold to the 10 FPS input data requirement!"
+        # assert step == 2, "Step needs to be 2 in order to hold to the 10 FPS input data requirement!"
         if real_world:
             """ Step needs to be 3, because the real-world data is 30 FPS. Training data is 20 FPS.
             Therefore, if we increase step from 2 to 3, we will still get 10 FPS data being fed in the network. 
@@ -86,7 +93,7 @@ class SiemensDataset(Dataset):
                 # accounting for the 1.5 times FPS difference
                 skip_exclude = int(1.5*skip_exclude)
 
-        if args.tiny_dataset:
+        if args.tiny_dataset and mode == 'train':
             # only use a few (specified) runs in order to quickly debug
             # --> 20230926: small dataset only for debugging (only 4 instead of 200 runs for quick testing)
             RUNS = get_tiny_dataset(mode)
@@ -97,7 +104,8 @@ class SiemensDataset(Dataset):
             RUNS = [args.single_run]
         elif real_world:
             # Samples where we have GT annotations: --> 20230926: Tim removed some runs because they were not labeled correctly (GT)
-            RUNS = [1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 16, 21, 14, 15, 18, 19]
+            RUNS = [16, 18]
+            # RUNS = [1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 16, 21, 14, 15, 18, 19]
         else:
             # # normal mode: get the runs based on run mode (train/val/test) and the K-fold 
             # if real_world:  # TODO: this will never get activated right? coz there is a elif real_world right above this
@@ -112,7 +120,7 @@ class SiemensDataset(Dataset):
             result_path = Path(
                 "C:/Users/up650/Downloads/constant_radius", args.dataset, "Runs")
         else:
-            result_path = Path("/storage/users/j.p.udhayakumar/datasets", args.dataset, "Runs")
+            result_path = Path("/home/tue/JP", args.dataset, "Runs")
 
         # sorted ensures compatibility between linux OS
         all_results = sorted(os.listdir(result_path))
@@ -282,7 +290,7 @@ class MaskNoise(object):
                 pos = (x + dx, y + dy)
                 r = radius + dr
                 noise_mask[0, i, :, :] = create_circular_mask(
-                    self.h, self.w, pos, r).astype(np.int)
+                    self.h, self.w, pos, r).astype(int)
             noise_mask[0, :, :, :] = np.logical_or(mask, noise_mask)
             return noise_mask
         else:
@@ -532,7 +540,7 @@ def add_noise_to_mask(mask, radius=14):
     # radius = 5  # FOR FIXED MASK RADIUS
     pos = (x, y)
     noise_mask = create_circular_mask(
-        mask.shape[0], mask.shape[1], pos, radius).astype(np.int)
+        mask.shape[0], mask.shape[1], pos, radius).astype(int)
     mask = np.logical_or(mask, noise_mask)
     return mask
 
@@ -556,7 +564,7 @@ def add_mask_sequence_noise(masks, min_duration=0, max_duration=50):
     y = random.randint(y[0], y[1])
     pos = (x, y)
     noise_mask = create_circular_mask(
-        mask_shape[0], mask_shape[1], pos, radius).astype(np.int)
+        mask_shape[0], mask_shape[1], pos, radius).astype(int)
     masks[f_start:f_end] = np.logical_or(masks[f_start:f_end], noise_mask)
     # print(f"Radius: {radius}. F_start: {f_start}. F_end: {f_end}. X: {x}, Y: {y}")
     return masks
@@ -633,7 +641,7 @@ def masks_from_boxes(img_size, boxes, divide_box_coordinates=True):
     # resize the mask to new size
     mask = mask.astype(np.uint8)
     # mask = cv2.resize(mask, dsize=(w_new, h_new))
-    return mask.astype(np.bool)
+    return mask.astype(bool)
 
 
 def get_data_as_sequences(data, sequence_info, step=2, label_mode=False, hflip=False):
@@ -670,7 +678,6 @@ def get_data_as_sequences(data, sequence_info, step=2, label_mode=False, hflip=F
     return output
 
 
-# 20230926: Tim says: not very neat
 def get_sequence_info(labels, seq_len, skip_safe, skip_act, skip_urgent, skip_exclude, exclude_frames, skip_factor, safety_threshold, strat):
     sequence_info = []
     

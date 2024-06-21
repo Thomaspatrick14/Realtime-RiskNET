@@ -253,7 +253,7 @@ if args.train:
     plt.legend()
     plt.title('Training and Validation Loss Over Epochs')
     plt.grid(True)
-    plt.savefig('/storage/users/j.p.udhayakumar/results/' + args.run_name + 'loss_plot.png')
+    plt.savefig(f"{run_path}/loss_plot.png")
     plt.close()
 
     # Plot the training and validation F-score
@@ -266,10 +266,10 @@ if args.train:
     plt.legend()
     plt.title('Training and Validation F-score Over Epochs')
     plt.grid(True)
-    plt.savefig('/storage/users/j.p.udhayakumar/results/' + args.run_name + 'fscore_plot.png')
+    plt.savefig(f"{run_path}/fscore_plot.png")
     plt.close()
 
-    print("Total train time: {:.1f} minutes".format((time.time() - t_start_train) / 60))
+    print("\n\nTotal train time: {:.1f} minutes".format((time.time() - t_start_train) / 60))
 
     # writer.close()
 
@@ -331,10 +331,25 @@ if (not args.train) or args.test_exp:
 
 
     folder_path = os.path.dirname(os.path.abspath(__file__))
+
+    preds_list = []
+    label_list = []
+
+    for i in range(1, 17): # For ablation study (to measure metrics for each video)
+        video_path = os.path.join(folder_path, "Tim's comparison/yt", f"{i}.mp4")
+        label_path = os.path.join(folder_path, "Tim's comparison/labels", f"{i}.csv")
+        append_detections_masks(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
+        # append_detections_masks_viz(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
+    
+    # Pick one from the following two lines
     # video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
-    video_path = 0 # Replace with 0 to use webcam
+    # video_path = 0 # Replace with 0 to use webcam
+
     # append_detections_masks(det_model, pred_model, args, img_size, video_path)
-    append_detections_masks_viz(det_model, pred_model, args, img_size, video_path)
+    # append_detections_masks_viz(det_model, pred_model, args, img_size, video_path)
+
+    bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
+    print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
 
 print("-"*79, "\n", "-"*79, "\n" * 5)
 
