@@ -1,8 +1,10 @@
 runs/
 *.pyc
-*.mp4
-*.pt
-*.csv
 *.yml
 *.yaml
 *.png
+sections/
+target/
+Tim's comparison/
+Torch-TensorRT/
+

@@ -12,7 +12,7 @@ def test(masks, model, logger=None, print_pred=False, return_probs=False):
     with torch.no_grad():
         outputs = model(masks)
 
-    preds = torch.max(outputs, 1).indices
+    preds = torch.max(outputs, 1).indices # preds is the index of the max value in the output tensor, since this is a binary classification problem, preds will be 0 or 1
     probs = outputs[:, 1].cpu().detach().tolist()
 
     col_probs = probs

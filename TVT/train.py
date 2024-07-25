@@ -42,7 +42,7 @@ def train_epoch(epoch, data_loader, model, criterion, optimizer, scheduler, epoc
         loss.backward()
         optimizer.step()
 
-        values, preds = torch.max(outputs, 1)
+        values, preds = torch.max(outputs, 1) # preds is the index of the max value in the output tensor, since this is a binary classification problem, preds will be 0 or 1
         targets_list = targets.cpu().detach().tolist()
         preds_list = preds.cpu().detach().tolist()
         all_preds.extend(preds_list)

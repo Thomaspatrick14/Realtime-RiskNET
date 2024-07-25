@@ -1,20 +1,8 @@
 import torch
-import torchvision
-import getopt
-import math
 import numpy as np
-import os
-import PIL
-import PIL.Image
-import sys
 import time
-import matplotlib.pyplot as plt
 import cv2
-from sys import platform
-from pathlib import Path
-import json
-from torchvision import transforms
-
+import pycuda.driver as cuda
 
 target_classes = (0, 1, 2, 3, 5, 7)
 combine_pairs = ((0, 1), (0, 3))
@@ -66,56 +54,6 @@ def combine_bboxes(bboxes, class_ids):
     return bboxes, class_ids
 
 
-def visualize(image, boxes, classes):
-    image = image.copy()
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    for i, box in enumerate(boxes):
-        if classes[i] == 1:  # person
-            color = (120, 170, 0)
-            label = 'person'
-        elif classes[i] == 2:  # bicycle
-            color = (170, 120, 0)
-            label = 'bicycle'
-        elif classes[i] == 3:  # car
-            color = (0, 0, 0)
-            label = 'car'
-        elif classes[i] == 4:  # motorcycle
-            color = (255, 0, 0)
-            label = 'motorcycle'
-        elif classes[i] == 6:  # bus
-            color = (0, 255, 0)
-            label = 'bus'
-        elif classes[i] == 8:  # truck
-            color = (0, 0, 255)
-            label = 'truck'
-        elif classes[i] == 212:  # combined
-            color = (170, 0, 120)
-            label = 'cyclist'
-        elif classes[i] == 214:  # combined
-            color = (0, 120, 170)
-            label = 'motorcyclist'
-        else:
-            raise ValueError("Non allowed classes were not filtered!")
-
-        cv2.rectangle(
-            image,
-            (int(box[0]), int(box[1])),
-            (int(box[2]), int(box[3])),
-            color, 2
-        )
-        cv2.putText(image, label, (int(box[0]), int(box[1] - 5)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2,
-                    lineType=cv2.LINE_AA)
-
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-    return image
-
-    # cv2.imshow('Image', image)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-
-
 def normalize_zero_one(data):
     min_value = np.min(data)
     max_value = np.max(data)
@@ -123,15 +61,15 @@ def normalize_zero_one(data):
     return normalized
 
 
-def keep_vehicles_only(boxes, classes):
-    boxes_keep = []
-    classes_keep = []
-    keep_idx = [3, 4, 6, 8]
-    for i in range(classes.shape[0]):
-        if classes[i] in keep_idx:
-            boxes_keep.append(boxes[i, :].tolist())
-            classes_keep.append(classes[i])
-    return np.array(boxes_keep), np.array(classes_keep)
+# def keep_vehicles_only(boxes, classes):
+#     boxes_keep = []
+#     classes_keep = []
+#     keep_idx = [3, 4, 6, 8]
+#     for i in range(classes.shape[0]):
+#         if classes[i] in keep_idx:
+#             boxes_keep.append(boxes[i, :].tolist())
+#             classes_keep.append(classes[i])
+#     return np.array(boxes_keep), np.array(classes_keep)
 
 
 def keep_roadusers_only(boxes, classes):
@@ -145,60 +83,132 @@ def keep_roadusers_only(boxes, classes):
     return np.array(boxes_keep), np.array(classes_keep)
 
 
-def predict(image, model, detection_threshold, cutoff_row=250):
-    # cutoff_row = int(image.shape[0] * 0.955)
-    # image[cutoff_row:, :, :] = 0 #if the bonnet is visible, it will be detected as a car
-    # image = normalize_zero_one(image) #normalization doesnt seem to work, YOLO isn't detecting anything
+# def predict(image, model, detection_threshold, cutoff_row=250):
+#     # cutoff_row = int(image.shape[0] * 0.955)
+#     # image[cutoff_row:, :, :] = 0 #if the bonnet is visible, it will be detected as a car
+#     # image = normalize_zero_one(image) #normalization doesnt seem to work, YOLO isn't detecting anything
 
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    # image = image.transpose((2, 0, 1))
-    # print(f"Shape of the image {image.shape}")
-    # image = torch.from_numpy(image).to(device)
-    # image = image.float().div(255.0).unsqueeze(0)
+#     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#     # image = image.transpose((2, 0, 1))
+#     # print(f"Shape of the image {image.shape}")
+#     # image = torch.from_numpy(image).to(device)
+#     # image = image.float().div(255.0).unsqueeze(0)
 
-    t_start = time.time()
-    with torch.no_grad():
-        output = model(image)
-    t_pred = time.time() - t_start
-    # print(f"Time taken: {t_pred}")
+#     t_start = time.time()
+#     with torch.no_grad():
+#         output = model(image)
+#     t_pred = time.time() - t_start
+#     # print(f"Time taken: {t_pred}")
     
-    ## get all the predicited class names
+#     ## get all the predicited class names
 
-    # if image is loaded to cuda
-    # pred_bboxes = output[0][:, :4].detach().cpu().numpy()
-    # pred_scores = output[0][:, 4].detach().cpu().numpy()
-    # pred_classes = output[0][:, 5].detach().cpu().numpy().astype(int)
+#     # if image is loaded to cuda
+#     # pred_bboxes = output[0][:, :4].detach().cpu().numpy()
+#     # pred_scores = output[0][:, 4].detach().cpu().numpy()
+#     # pred_classes = output[0][:, 5].detach().cpu().numpy().astype(int)
 
-    # if image is not loaded to cuda
-    pred_bboxes = output.pred[0][:, :4].detach().cpu().numpy()
-    pred_scores = output.pred[0][:, 4].detach().cpu().numpy()
-    pred_classes = output.pred[0][:, 5].detach().cpu().numpy().astype(int)
+#     # if image is not loaded to cuda
+#     pred_bboxes = output.pred[0][:, :4].detach().cpu().numpy()
+#     pred_scores = output.pred[0][:, 4].detach().cpu().numpy()
+#     pred_classes = output.pred[0][:, 5].detach().cpu().numpy().astype(int)
 
-    # get boxes and classes above the threshold score
-    boxes = pred_bboxes[pred_scores >= detection_threshold].astype(np.int32) # size of (x,4) where x is the number of detections and y is Xmin, Ymin, Xmax, Ymax
-    classes = pred_classes[pred_scores >= detection_threshold].astype(np.int32)
+#     # get boxes and classes above the threshold score
+#     boxes = pred_bboxes[pred_scores >= detection_threshold].astype(np.int32) # size of (x,4) where x is the number of detections and y is Xmin, Ymin, Xmax, Ymax
+#     classes = pred_classes[pred_scores >= detection_threshold].astype(np.int32)
 
-    # Scale the bounding boxes from 640x480 to 480x360
-    # ratio = 360 / 480
-    # boxes[:, :] = boxes[:, :] * ratio
+#     # Scale the bounding boxes from 640x480 to 480x360
+#     # ratio = 360 / 480
+#     # boxes[:, :] = boxes[:, :] * ratio
+#     return boxes, classes, t_pred
+
+# def detect(frames, model):
+#     THRESHOLD = 0.5
+
+#     detections = []
+
+#     # =============================
+#     # Resize the image to 640x480 (Yolo model expects dimensions which are a multiple of 32)
+#     # width, height = 640, 480    # for cuda loaded image
+#     # width, height = 480, 360
+#     # img = cv2.resize(frames, (width, height), interpolation=cv2.INTER_LINEAR)
+#     # =============================
+
+#     boxes, classes, t_pred = predict(frames, model, detection_threshold=THRESHOLD)
+
+#     #boxes, classes = keep_vehicles_only(boxes, classes)
+#     boxes, classes = keep_roadusers_only(boxes, classes)
+
+#     classes = classes.tolist()
+#     boxes = boxes.tolist()
+#     boxes, classes = combine_bboxes(boxes, classes)
+
+#     frame_preds = {
+#         'Frame': 0,
+#         'Classes': classes,  # we won't use them (yet)
+#         'BBoxes': boxes
+#     }
+
+#     detections.append(frame_preds)
+#     try:
+#         print(f"\nTime to estimate detections for one frame: {t_pred:.3f} & {1/t_pred:.1f} FPS")
+#     except ZeroDivisionError:
+#         print(f"\nTime to estimate detections for one frame: {t_pred:.6f}")
+    
+#     return detections
+
+
+
+# Perform inference
+def do_inference(context, bindings, inputs, outputs, stream):
+    [cuda.memcpy_htod_async(inp['device'], inp['host'], stream) for inp in inputs]
+    context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
+    [cuda.memcpy_dtoh_async(out['host'], out['device'], stream) for out in outputs]
+    stream.synchronize()
+    return [out['host'] for out in outputs]
+
+def predict(image, context, tensorrt, detection_threshold):
+    
+    inputs, outputs, bindings, stream = tensorrt
+
+    # Preprocess the image
+    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    input_image = image.transpose((2, 0, 1)).astype(np.float32)
+    input_image = normalize_zero_one(input_image) #normalization doesnt seem to work, YOLO isn't detecting anything
+    # input_image /= 255.0
+    input_image = np.expand_dims(input_image, axis=0)
+    
+    # Copy input image to pagelocked memory
+    np.copyto(inputs[0]['host'], input_image.ravel())
+
+    # Run inference
+    t_start = time.time()
+    trt_outputs = do_inference(context, bindings, inputs, outputs, stream)
+    t_pred = time.time() - t_start
+
+    # Process the output
+    trt_outputs = trt_outputs[0].reshape(1, 14175, 85)  # Adjust these dimensions based on your model output
+    pred_bboxes = trt_outputs[0][:, :4]
+    pred_scores = trt_outputs[0][:, 4]
+    pred_classes = trt_outputs[0][:, 5].astype(np.int32)
+
+    # Get boxes and classes above the threshold score
+    boxes = pred_bboxes[pred_scores >= detection_threshold].astype(np.int32)
+    classes = pred_classes[pred_scores >= detection_threshold]
+    print(f"Number of detections: {len(boxes)}")
+
+    # boxes[:, [1,3]] -= 60
+
     return boxes, classes, t_pred
 
-def detect(frames, model):
-    THRESHOLD = 0.5
+def detect(frames, context, tensorrt):
+    THRESHOLD = 0.9
 
     detections = []
+    img = cv2.copyMakeBorder(frames, 0, 120, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0])
 
-    # =============================
-    # Resize the image to 640x480 (Yolo model expects dimensions which are a multiple of 32)
-    # width, height = 640, 480    # for cuda loaded image
-    width, height = 480, 360
-    img = cv2.resize(frames, (width, height), interpolation=cv2.INTER_LINEAR)
-    # =============================
+    boxes, classes, t_pred = predict(img, context, tensorrt, detection_threshold=THRESHOLD)
 
-    boxes, classes, t_pred = predict(img, model, detection_threshold=THRESHOLD)
-
-    #boxes, classes = keep_vehicles_only(boxes, classes)
     boxes, classes = keep_roadusers_only(boxes, classes)
 
     classes = classes.tolist()
@@ -206,8 +216,7 @@ def detect(frames, model):
     boxes, classes = combine_bboxes(boxes, classes)
 
     frame_preds = {
-        'Frame': 0,
-        'Classes': classes,  # we won't use them (yet)
+        'Classes': classes,
         'BBoxes': boxes
     }
 
@@ -217,5 +226,4 @@ def detect(frames, model):
     except ZeroDivisionError:
         print(f"\nTime to estimate detections for one frame: {t_pred:.6f}")
     
-          
     return detections

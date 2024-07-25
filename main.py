@@ -15,17 +15,15 @@ from datetime import datetime
 from torchvision import transforms
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
+import os
 
-from dataset.Realtimetest.real_inference_dataset import get_masks
-from dataset.Realtimetest.Detector import detect
 from TVT.train import train_epoch
 from TVT.validate import val_epoch
-from TVT.test import test
 from pred_models.create_model import get_model
 from dataset.dataset import SiemensDataset, MaskNoise
 from TVT.utils import *
 from warehouse import *
-import os
+
 
 if platform == "win32":
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # unsupported workaround for OMP: Error #15 on WIN32
@@ -45,7 +43,7 @@ parser = argparse.ArgumentParser(description='Passing arguments to main risk est
 # Run parameters
 parser.add_argument("--run_name", type=str, default="experiment_1",
                     help='Name of the run to be tested or evaluated')
-parser.add_argument("--input", default=['flow'], nargs='+',
+parser.add_argument("--input", default=['mask'], nargs='+',
                     help='List of inputs that the model should take into account. Default: [flow], options: '
                          '[flow, depth, rgb, mask]')
 parser.add_argument("--n_backbones", type=int, default=1,
@@ -58,6 +56,12 @@ parser.add_argument("--visualize", default=False, action='store_true',
                     help='Visualizes some sequences from the dataset.')
 parser.add_argument("--test_exp", default=False, action='store_true',
                     help='Indicates whether the model should be tested on all saved training checkpoints')
+parser.add_argument("--viz", default=False, action='store_true',
+                    help='Indicates whether the vizualization of the model while running should be done')
+parser.add_argument("--graph", default=False, action='store_true',
+                    help='Shows live graph of Risk Probability, Time taken per sequence and Prediction time')
+parser.add_argument("--camera", default=False, action='store_true',
+                    help='Indicates whether the model should be tested on the camera feed')
 
 # Attention mechanism
 parser.add_argument("--conv1_out", type=int, default=8,
@@ -155,7 +159,7 @@ if args.train:
     model = get_model(args)
 
     print('-'*79 + "\nLoading training set")
-    train_set = SiemensDataset(mode='train', args=args, transform=transforms.Compose([MaskNoise(p_noise=args.p_noise)]))
+    train_set = SiemensDataset(mode='train', args=args)
     train_data_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     # print_mem_usage()
     
@@ -280,6 +284,7 @@ if args.train:
 
 if (not args.train) or args.test_exp:
 
+    args.mask_method = "case4"
     with open(run_path + '/args.txt') as file:
         train_args = json.load(file)
         
@@ -305,9 +310,8 @@ if (not args.train) or args.test_exp:
     img_size = [int(960 / args.downscale_factor),
                     int(1280 / args.downscale_factor)]  # [120, 160] for downscale_factor = 8
 
-    # Load the model
+    # Load the Prediction model
     pred_model = get_model(args)
-
     if platform == "win32":
         pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth', map_location=torch.device('cpu')))
     else:
@@ -321,37 +325,34 @@ if (not args.train) or args.test_exp:
     if torch.cuda.is_available():
         print("CUDA available: loading the detection model on the GPU")
         det_model = det_model.cuda()
-    # det_model.eval()
-    # input_data = torch.randn(1, 3, 640, 480)
-    # trt_model = torch_tensorrt.compile(det_model, inputs=[input_data],
-    #                                ir='ts',
-    #                                enabled_precisions={torch.float16},
-    #                                truncate_long_and_double=True)
+    det_model.eval()
 
-
+    # # For ablation study (to measure metrics for each video)
+    # preds_list = []
+    # label_list = []
+    # for i in range(1, 17):
+    #     video_path = os.path.join(folder_path, "Tim's comparison/yt", f"{i}.mp4")
+    #     label_path = os.path.join(folder_path, "Tim's comparison/labels", f"{i}.csv")
+    #     append_detections_masks(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
+    #     append_detections_masks_viz(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
 
     folder_path = os.path.dirname(os.path.abspath(__file__))
 
-    preds_list = []
-    label_list = []
+    if args.camera:
+        video_path = 0 # Replace with 0 to use webcam
+    else:
+        video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
 
-    for i in range(1, 17): # For ablation study (to measure metrics for each video)
-        video_path = os.path.join(folder_path, "Tim's comparison/yt", f"{i}.mp4")
-        label_path = os.path.join(folder_path, "Tim's comparison/labels", f"{i}.csv")
-        append_detections_masks(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
-        # append_detections_masks_viz(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
-    
-    # Pick one from the following two lines
-    # video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
-    # video_path = 0 # Replace with 0 to use webcam
+    instance = Warehouse(pred_model, det_model, args, img_size, video_path)
+    if args.viz:
+        instance.append_detections_masks_viz()
+    else:
+        instance.append_detections_masks()
 
-    # append_detections_masks(det_model, pred_model, args, img_size, video_path)
-    # append_detections_masks_viz(det_model, pred_model, args, img_size, video_path)
-
-    bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
-    print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
+    # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
+    # print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
 
 print("-"*79, "\n", "-"*79, "\n" * 5)
 
 
-# python main.py --run_name Thesis_test --input mask --backbone ResNext18 --mask_method "case4"
+# python main.py --run_name Thesis_test

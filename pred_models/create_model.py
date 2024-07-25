@@ -100,7 +100,7 @@ class OnlyMaskNet(nn.Module):
             nn.Softmax(dim=1)
         )
 
-    def forward(self, flow, depth, rgb, mask):
+    def forward(self, mask):
         x = self.model_flow(mask)
         x = self.prediction_layer(x)
         return x
