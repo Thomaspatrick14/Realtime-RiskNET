@@ -15,17 +15,15 @@ from datetime import datetime
 from torchvision import transforms
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
+import os
 
-from dataset.Realtimetest.real_inference_dataset import get_masks
-from dataset.Realtimetest.Detector import detect
 from TVT.train import train_epoch
 from TVT.validate import val_epoch
-from TVT.test import test
 from pred_models.create_model import get_model
 from dataset.dataset import SiemensDataset, MaskNoise
 from TVT.utils import *
 from warehouse import *
-import os
+
 
 if platform == "win32":
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # unsupported workaround for OMP: Error #15 on WIN32
@@ -62,6 +60,8 @@ parser.add_argument("--viz", default=False, action='store_true',
                     help='Indicates whether the vizualization of the model while running should be done')
 parser.add_argument("--graph", default=False, action='store_true',
                     help='Shows live graph of Risk Probability, Time taken per sequence and Prediction time')
+parser.add_argument("--camera", default=False, action='store_true',
+                    help='Indicates whether the model should be tested on the camera feed')
 
 # Attention mechanism
 parser.add_argument("--conv1_out", type=int, default=8,
@@ -338,9 +338,10 @@ if (not args.train) or args.test_exp:
 
     folder_path = os.path.dirname(os.path.abspath(__file__))
 
-    # Pick one from the following two lines
-    # video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
-    video_path = 0 # Replace with 0 to use webcam
+    if args.camera:
+        video_path = 0 # Replace with 0 to use webcam
+    else:
+        video_path = os.path.join(folder_path, "yt.mp4")  # Replace with the path to your video file
 
     instance = Warehouse(pred_model, det_model, args, img_size, video_path)
     if args.viz:

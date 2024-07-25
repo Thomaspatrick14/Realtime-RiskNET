@@ -2,10 +2,12 @@ import cv2
 import time
 import numpy as np
 import torch
+import os
+
 from dataset.Realtimetest.real_inference_dataset import get_masks
 from dataset.Realtimetest.Detector import detect
 from TVT.test import test
-import os
+from dataset.Realtimetest.yolo_tensorrt_engine import load_engine, allocate_buffers
 from TVT.utils import *
 
 import matplotlib.pyplot as plt
@@ -20,6 +22,12 @@ class Warehouse:
         self.video_path = video_path
         self.return_probs = False
 
+        # Load the TensorRT Detection engine
+        engine_path = "/home/tue/risknet/Realtime-RiskNET/yolov5s.engine"
+        engine = load_engine(engine_path)
+        self.context = engine.create_execution_context()
+        self.tensorrt = allocate_buffers(engine) #inputs, outputs, bindings, stream
+
         # Get dimensions of input frames
         self.height, self.width = 360, 480
 
@@ -28,13 +36,14 @@ class Warehouse:
         # self.pred_list = preds_list
         # self.label_list = label_list
 
-    def detect(self):
-        return detect(self.frame, self.det_model)
+    def detect(self): # object detection model
+        # return detect(self.frame, self.det_model)
+        return detect(self.frame, self.context, self.tensorrt) # for tensorrt engine
     
-    def get_masks(self):
+    def get_masks(self): # Creates attention masks from detections
         return get_masks(self.detect(), self.img_size, self.args.mask_method, self.args.mask_prior, self.args.viz)
     
-    def test(self, masks):
+    def test(self, masks): # Risk prediction model (inference)
         return test(masks, self.pred_model, return_probs=self.return_probs)
         
     def append_detections_masks(self):
@@ -89,41 +98,41 @@ class Warehouse:
             if not ret:
                 break
             
-            # if frame_count == 0 or frame_count % multiple == 0:
+            if frame_count == 0 or frame_count % multiple == 0:
 
-            # if run_labels_data[frame_count] == -1: # For ablation study
-            #         break
-            
-            #if frame is not 480x360, resize it
-            if self.frame.shape[0] != 360 or self.frame.shape[1] != 480:
-                self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-            mask = self.get_masks()
-            mask = torch.tensor(mask).unsqueeze(0).float()
-            if first:
-                masks = mask
-                first = False
-            else:
-                masks = torch.cat((masks, mask), dim=2)
-
-            if masks.shape[2] == 8:
-                predictions, t_total = self.test(masks)
-                # preds_list.append(predictions[0]) # for ablation study
-                # label_list.append(run_labels_data[frame_count]) # for ablation study
-                tpred += t_total
-                pred_list.append(predictions[0])
-                print(f"Prediction: {predictions}")
-                masks = masks[:,:,1:,:,:]
-                counter += 1
-                neram = time.time() - t2  # neram = time
-                total_neram += neram
-                print(f"Sequence no.: {counter}")
-            
-                if counter == 1:
-                    first_seq = time.time() - t1
-                    print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                # if run_labels_data[frame_count] == -1: # For ablation study
+                #         break
+                
+                #if frame is not 480x360, resize it
+                if self.frame.shape[0] != 360 or self.frame.shape[1] != 480:
+                    self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+                mask = self.get_masks()
+                mask = torch.tensor(mask).unsqueeze(0).float()
+                if first:
+                    masks = mask
+                    first = False
                 else:
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                    masks = torch.cat((masks, mask), dim=2)
+
+                if masks.shape[2] == 8:
+                    predictions, t_total = self.test(masks)
+                    # preds_list.append(predictions[0]) # for ablation study
+                    # label_list.append(run_labels_data[frame_count]) # for ablation study
+                    tpred += t_total
+                    pred_list.append(predictions[0])
+                    print(f"Prediction: {predictions}")
+                    masks = masks[:,:,1:,:,:]
+                    counter += 1
+                    neram = time.time() - t2  # neram = time
+                    total_neram += neram
+                    print(f"Sequence no.: {counter}")
+                
+                    if counter == 1:
+                        first_seq = time.time() - t1
+                        print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+                        print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                    else:
+                        print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
 
             # Doesn't have to be inside the drop frames if statement          
             if isinstance(self.video_path, int) and frame_count == 500: #for testing camera
@@ -194,7 +203,7 @@ class Warehouse:
                 print("Dropping down to 10 fps")
                 # reshaping the frame to the required size
                 #if frame is not 480x360, resize it
-                if self.frame.shape[0] != 360 or self.frame.shape[1] != 480:
+                if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
                     self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
                 # if run_labels_data[frame_count] == -1: # For ablation study
                 #     break

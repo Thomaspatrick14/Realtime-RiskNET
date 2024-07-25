@@ -2,10 +2,7 @@ import torch
 import numpy as np
 import time
 import cv2
-import tensorrt as trt
 import pycuda.driver as cuda
-import pycuda.autoinit
-
 
 target_classes = (0, 1, 2, 3, 5, 7)
 combine_pairs = ((0, 1), (0, 3))
@@ -57,58 +54,11 @@ def combine_bboxes(bboxes, class_ids):
     return bboxes, class_ids
 
 
-# def visualize(image, boxes, classes):
-#     image = image.copy()
-#     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-#     for i, box in enumerate(boxes):
-#         if classes[i] == 1:  # person
-#             color = (120, 170, 0)
-#             label = 'person'
-#         elif classes[i] == 2:  # bicycle
-#             color = (170, 120, 0)
-#             label = 'bicycle'
-#         elif classes[i] == 3:  # car
-#             color = (0, 0, 0)
-#             label = 'car'
-#         elif classes[i] == 4:  # motorcycle
-#             color = (255, 0, 0)
-#             label = 'motorcycle'
-#         elif classes[i] == 6:  # bus
-#             color = (0, 255, 0)
-#             label = 'bus'
-#         elif classes[i] == 8:  # truck
-#             color = (0, 0, 255)
-#             label = 'truck'
-#         elif classes[i] == 212:  # combined
-#             color = (170, 0, 120)
-#             label = 'cyclist'
-#         elif classes[i] == 214:  # combined
-#             color = (0, 120, 170)
-#             label = 'motorcyclist'
-#         else:
-#             raise ValueError("Non allowed classes were not filtered!")
-
-#         cv2.rectangle(
-#             image,
-#             (int(box[0]), int(box[1])),
-#             (int(box[2]), int(box[3])),
-#             color, 2
-#         )
-#         cv2.putText(image, label, (int(box[0]), int(box[1] - 5)),
-#                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2,
-#                     lineType=cv2.LINE_AA)
-
-#     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-#     return image
-
-
-
-# def normalize_zero_one(data):
-#     min_value = np.min(data)
-#     max_value = np.max(data)
-#     normalized = ((data - min_value) / (max_value - min_value))
-#     return normalized
+def normalize_zero_one(data):
+    min_value = np.min(data)
+    max_value = np.max(data)
+    normalized = ((data - min_value) / (max_value - min_value))
+    return normalized
 
 
 # def keep_vehicles_only(boxes, classes):
@@ -207,29 +157,7 @@ def keep_roadusers_only(boxes, classes):
     
 #     return detections
 
-# Load TensorRT engine
-def load_engine(engine_path):
-    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-    with open(engine_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-        return runtime.deserialize_cuda_engine(f.read())
 
-# Allocate buffers for input and output
-def allocate_buffers(engine):
-    inputs = []
-    outputs = []
-    bindings = []
-    stream = cuda.Stream()
-    for binding in engine:
-        size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size
-        dtype = trt.nptype(engine.get_binding_dtype(binding))
-        host_mem = cuda.pagelocked_empty(size, dtype)
-        device_mem = cuda.mem_alloc(host_mem.nbytes)
-        bindings.append(int(device_mem))
-        if engine.binding_is_input(binding):
-            inputs.append({"host": host_mem, "device": device_mem})
-        else:
-            outputs.append({"host": host_mem, "device": device_mem})
-    return inputs, outputs, bindings, stream
 
 # Perform inference
 def do_inference(context, bindings, inputs, outputs, stream):
@@ -239,18 +167,17 @@ def do_inference(context, bindings, inputs, outputs, stream):
     stream.synchronize()
     return [out['host'] for out in outputs]
 
-# Load the TensorRT engine
-engine_path = "/home/tue/risknet/Realtime-RiskNET/yolov5s.engine"
-engine = load_engine(engine_path)
-context = engine.create_execution_context()
-inputs, outputs, bindings, stream = allocate_buffers(engine)
+def predict(image, context, tensorrt, detection_threshold):
+    
+    inputs, outputs, bindings, stream = tensorrt
 
-def predict(image, detection_threshold):
     # Preprocess the image
+    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     input_image = image.transpose((2, 0, 1)).astype(np.float32)
-    input_image /= 255.0
+    input_image = normalize_zero_one(input_image) #normalization doesnt seem to work, YOLO isn't detecting anything
+    # input_image /= 255.0
     input_image = np.expand_dims(input_image, axis=0)
-
+    
     # Copy input image to pagelocked memory
     np.copyto(inputs[0]['host'], input_image.ravel())
 
@@ -274,13 +201,13 @@ def predict(image, detection_threshold):
 
     return boxes, classes, t_pred
 
-def detect(frames):
-    THRESHOLD = 0.8
+def detect(frames, context, tensorrt):
+    THRESHOLD = 0.9
 
     detections = []
     img = cv2.copyMakeBorder(frames, 0, 120, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0])
 
-    boxes, classes, t_pred = predict(img, detection_threshold=THRESHOLD)
+    boxes, classes, t_pred = predict(img, context, tensorrt, detection_threshold=THRESHOLD)
 
     boxes, classes = keep_roadusers_only(boxes, classes)
 
@@ -289,7 +216,6 @@ def detect(frames):
     boxes, classes = combine_bboxes(boxes, classes)
 
     frame_preds = {
-        'Frame': 0,
         'Classes': classes,
         'BBoxes': boxes
     }

@@ -43,18 +43,16 @@ def get_masks(detections, img_size, method, prior_method, viz=False, divide=True
     else:
         threshold = 1728  # TRY 1728 == 1 % of 480x360 = 172800
 
-    num_steps = len(detections)
-    run_masks = np.zeros((1, num_steps, img_size[0], img_size[1]))
-    for step in range(num_steps):
-        frame_detections = detections[step]
-        boxes = np.array(frame_detections['BBoxes'])
-        classes = np.array(frame_detections['Classes'])
-        processed_boxes, processed_classes = filter_boxes(
-            boxes, classes, case, THRESHOLD=threshold)
-        mask = masks_from_boxes(
-            img_size, processed_boxes, divide_box_coordinates=divide)
-        mask = mask * prior
-        run_masks[0, step, :, :] = mask
+    run_masks = np.zeros((1, 1, img_size[0], img_size[1]))
+    frame_detections = detections[0]
+    boxes = np.array(frame_detections['BBoxes'])
+    classes = np.array(frame_detections['Classes'])
+    processed_boxes, processed_classes = filter_boxes(
+        boxes, classes, case, THRESHOLD=threshold)
+    mask = masks_from_boxes(
+        img_size, processed_boxes, divide_box_coordinates=divide)
+    mask = mask * prior
+    run_masks[0, 0, :, :] = mask
     if viz:
         return run_masks, processed_boxes, boxes # for debugging and visualization purposes
     else:
