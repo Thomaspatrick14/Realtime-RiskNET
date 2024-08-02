@@ -1,8 +1,11 @@
 import torch
 import time
-from dataset.Realtimetest.yolo_tensorrt_engine import do_inference
+from tRTfiles.yolo_tensorrt_engine import do_inference
 import numpy as np
 
+#############################################################
+####################### Not optimized #######################
+#############################################################
 
 def test(masks, model, logger=None, print_pred=False, return_probs=False):
     t1 = time.time()
@@ -30,6 +33,9 @@ def test(masks, model, logger=None, print_pred=False, return_probs=False):
     else:
         return predictions, t_total
 
+#############################################################
+###################    TensorRT   ###########################
+#############################################################
 
 # def test(masks, context, tensorrt, logger=None, print_pred=False, return_probs=False):
 #     t1 = time.time()

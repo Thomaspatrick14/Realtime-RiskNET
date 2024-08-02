@@ -3,7 +3,7 @@ import numpy as np
 import time
 import cv2
 import pycuda.driver as cuda
-from dataset.Realtimetest.yolo_tensorrt_engine import do_inference
+from tRTfiles.yolo_tensorrt_engine import do_inference
 
 # class Detector:
 #     def __init__(self, frame, context, tensorrt):
@@ -200,6 +200,9 @@ def keep_roadusers_only(boxes, classes):
             classes_keep.append(classes[i])
     return np.array(boxes_keep), np.array(classes_keep)
 
+#############################################################
+####################### Not optimized #######################
+#############################################################
 
 def predict(image, model, detection_threshold, cutoff_row=250):
     # cutoff_row = int(image.shape[0] * 0.955)
@@ -274,6 +277,10 @@ def detect(frames, model):
         print(f"\nTime to estimate detections for one frame: {t_pred:.6f}")
     
     return detections
+
+#############################################################
+###################    TensorRT   ###########################
+#############################################################
 
 # def predict(image, context, tensorrt, detection_threshold):
 
