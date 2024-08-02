@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import os
 
-from dataset.Realtimetest.real_inference_dataset import get_masks
+from dataset.Realtimetest.real_inference_dataset import RealInferenceDataset
 from dataset.Realtimetest.Detector import detect
 from TVT.test import test
-from dataset.Realtimetest.yolo_tensorrt_engine import load_engine, allocate_buffers
+from tRTfiles.yolo_tensorrt_engine import load_engine, allocate_buffers
 from TVT.utils import *
 
 import matplotlib.pyplot as plt
@@ -23,10 +23,12 @@ class Warehouse:
         self.return_probs = False
 
         # Load the TensorRT Detection engine
-        engine_path = "/home/tue/risknet/Realtime-RiskNET/yolov5s.engine"
-        engine = load_engine(engine_path)
-        self.context = engine.create_execution_context()
-        self.tensorrt = allocate_buffers(engine) #inputs, outputs, bindings, stream
+        yolo_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/dataset/Realtimetest/yolov5s.engine")
+        pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/pred_model.trt")
+        self.pred_context = pred_engine.create_execution_context()
+        self.yolo_context = yolo_engine.create_execution_context()
+        self.yolo_tensorrt = allocate_buffers(yolo_engine) #inputs, outputs, bindings, stream
+        self.pred_tensorrt = allocate_buffers(pred_engine)
 
         # Get dimensions of input frames
         self.height, self.width = 360, 480
@@ -37,20 +39,22 @@ class Warehouse:
         # self.label_list = label_list
 
     def detect(self): # object detection model
-        # return detect(self.frame, self.det_model)
-        return detect(self.frame, self.context, self.tensorrt) # for tensorrt engine
+        return detect(self.frame, self.det_model)
+        # return detect(self.frame, self.yolo_context, self.yolo_tensorrt) # TensorRT
     
     def get_masks(self): # Creates attention masks from detections
-        return get_masks(self.detect(), self.img_size, self.args.mask_method, self.args.mask_prior, self.args.viz)
+        instance = RealInferenceDataset(self.detect(), self.img_size, self.args.mask_method, self.args.mask_prior, self.args.viz)
+        return instance.get_masks()
     
     def test(self, masks): # Risk prediction model (inference)
         return test(masks, self.pred_model, return_probs=self.return_probs)
+        # return test(masks, self.pred_context, self.pred_tensorrt, return_probs=self.return_probs)   # TensorRT
         
     def append_detections_masks(self):
 
         # Cold start the models
         print('-'*79 + "\nCold starting the models...")
-        self.frame = np.ones((360, 480, 3))
+        self.frame = np.ones((self.height, self.width, 3))
         cold_masks = self.get_masks()
         cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()
         cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
@@ -98,41 +102,41 @@ class Warehouse:
             if not ret:
                 break
             
-            if frame_count == 0 or frame_count % multiple == 0:
+            # if frame_count == 0 or frame_count % multiple == 0:
 
-                # if run_labels_data[frame_count] == -1: # For ablation study
-                #         break
-                
-                #if frame is not 480x360, resize it
-                if self.frame.shape[0] != 360 or self.frame.shape[1] != 480:
-                    self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-                mask = self.get_masks()
-                mask = torch.tensor(mask).unsqueeze(0).float()
-                if first:
-                    masks = mask
-                    first = False
+            # if run_labels_data[frame_count] == -1: # For ablation study
+            #         break
+            
+            #if frame is not 480x360, resize it
+            if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
+                self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+            mask = self.get_masks()
+            mask = torch.tensor(mask).unsqueeze(0).float()
+            if first:
+                masks = mask
+                first = False
+            else:
+                masks = torch.cat((masks, mask), dim=2)
+
+            if masks.shape[2] == 8:
+                predictions, t_total = self.test(masks)
+                # preds_list.append(predictions[0]) # for ablation study
+                # label_list.append(run_labels_data[frame_count]) # for ablation study
+                tpred += t_total
+                pred_list.append(predictions[0])
+                print(f"Prediction: {predictions}")
+                masks = masks[:,:,1:,:,:]
+                counter += 1
+                neram = time.time() - t2  # neram = time
+                total_neram += neram
+                print(f"Sequence no.: {counter}")
+            
+                if counter == 1:
+                    first_seq = time.time() - t1
+                    print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
                 else:
-                    masks = torch.cat((masks, mask), dim=2)
-
-                if masks.shape[2] == 8:
-                    predictions, t_total = self.test(masks)
-                    # preds_list.append(predictions[0]) # for ablation study
-                    # label_list.append(run_labels_data[frame_count]) # for ablation study
-                    tpred += t_total
-                    pred_list.append(predictions[0])
-                    print(f"Prediction: {predictions}")
-                    masks = masks[:,:,1:,:,:]
-                    counter += 1
-                    neram = time.time() - t2  # neram = time
-                    total_neram += neram
-                    print(f"Sequence no.: {counter}")
-                
-                    if counter == 1:
-                        first_seq = time.time() - t1
-                        print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
-                        print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
-                    else:
-                        print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
 
             # Doesn't have to be inside the drop frames if statement          
             if isinstance(self.video_path, int) and frame_count == 500: #for testing camera
@@ -151,7 +155,7 @@ class Warehouse:
 
         # Cold start the models
         print('-'*79 + "\nCold starting the models...")
-        self.frame = np.ones((360, 480, 3))
+        self.frame = np.ones((self.height, self.width, 3))
         cold_masks,_,_ = self.get_masks()
         print(f"Size of cold_masks: {cold_masks.shape}")
         cold_masks = torch.tensor(cold_masks).unsqueeze(0).float()

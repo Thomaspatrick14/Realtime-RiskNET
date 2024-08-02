@@ -23,6 +23,7 @@ from pred_models.create_model import get_model
 from dataset.dataset import SiemensDataset, MaskNoise
 from TVT.utils import *
 from warehouse import *
+import tensorrt as trt
 
 
 if platform == "win32":
@@ -319,6 +320,15 @@ if (not args.train) or args.test_exp:
     pred_model.eval()
     Path(run_path).mkdir(parents=True, exist_ok=True)
 
+    # # Export the model to ONNX format
+    # input_data = torch.randn(1, 1, 8, 120, 160)
+
+    # pred_model = pred_model.cpu()
+    # input_data = input_data.cpu()
+
+    # # Export to ONNX
+    # torch.onnx.export(pred_model, input_data, "model.onnx", verbose=False)
+
     # Load the Detection model
     print(f"Loading the Detection model")
     det_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
@@ -355,4 +365,4 @@ if (not args.train) or args.test_exp:
 print("-"*79, "\n", "-"*79, "\n" * 5)
 
 
-# python main.py --run_name Thesis_test
+# # python main.py --run_name Thesis_test
