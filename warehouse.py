@@ -39,16 +39,16 @@ class Warehouse:
         # self.label_list = label_list
 
     def detect(self): # object detection model
-        return detect(self.frame, self.det_model)
-        # return detect(self.frame, self.yolo_context, self.yolo_tensorrt) # TensorRT
+        # return detect(self.frame, self.det_model)
+        return detect(self.frame, self.yolo_context, self.yolo_tensorrt) # TensorRT
     
     def get_masks(self): # Creates attention masks from detections
         instance = RealInferenceDataset(self.detect(), self.img_size, self.args.mask_method, self.args.mask_prior, self.args.viz)
         return instance.get_masks()
     
     def test(self, masks): # Risk prediction model (inference)
-        return test(masks, self.pred_model, return_probs=self.return_probs)
-        # return test(masks, self.pred_context, self.pred_tensorrt, return_probs=self.return_probs)   # TensorRT
+        # return test(masks, self.pred_model, return_probs=self.return_probs)
+        return test(masks, self.pred_context, self.pred_tensorrt, return_probs=self.return_probs)   # TensorRT
         
     def append_detections_masks(self):
 
@@ -102,41 +102,41 @@ class Warehouse:
             if not ret:
                 break
             
-            # if frame_count == 0 or frame_count % multiple == 0:
+            if frame_count == 0 or frame_count % multiple == 0:
 
-            # if run_labels_data[frame_count] == -1: # For ablation study
-            #         break
-            
-            #if frame is not 480x360, resize it
-            if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
-                self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-            mask = self.get_masks()
-            mask = torch.tensor(mask).unsqueeze(0).float()
-            if first:
-                masks = mask
-                first = False
-            else:
-                masks = torch.cat((masks, mask), dim=2)
-
-            if masks.shape[2] == 8:
-                predictions, t_total = self.test(masks)
-                # preds_list.append(predictions[0]) # for ablation study
-                # label_list.append(run_labels_data[frame_count]) # for ablation study
-                tpred += t_total
-                pred_list.append(predictions[0])
-                print(f"Prediction: {predictions}")
-                masks = masks[:,:,1:,:,:]
-                counter += 1
-                neram = time.time() - t2  # neram = time
-                total_neram += neram
-                print(f"Sequence no.: {counter}")
-            
-                if counter == 1:
-                    first_seq = time.time() - t1
-                    print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                # if run_labels_data[frame_count] == -1: # For ablation study
+                #         break
+                
+                #if frame is not 480x360, resize it
+                if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
+                    self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+                mask = self.get_masks()
+                mask = torch.tensor(mask).unsqueeze(0).float()
+                if first:
+                    masks = mask
+                    first = False
                 else:
-                    print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                    masks = torch.cat((masks, mask), dim=2)
+
+                if masks.shape[2] == 8:
+                    predictions, t_total = self.test(masks)
+                    # preds_list.append(predictions[0]) # for ablation study
+                    # label_list.append(run_labels_data[frame_count]) # for ablation study
+                    tpred += t_total
+                    pred_list.append(predictions[0])
+                    print(f"Prediction: {predictions}")
+                    masks = masks[:,:,1:,:,:]
+                    counter += 1
+                    neram = time.time() - t2  # neram = time
+                    total_neram += neram
+                    print(f"Sequence no.: {counter}")
+                
+                    if counter == 1:
+                        first_seq = time.time() - t1
+                        print(f"Time for the first sequence (8 detections + 1 prediction): {first_seq:.4} s")
+                        print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
+                    else:
+                        print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
 
             # Doesn't have to be inside the drop frames if statement          
             if isinstance(self.video_path, int) and frame_count == 500: #for testing camera
@@ -222,15 +222,23 @@ class Warehouse:
                 # Display Bounding boxes overlayed on current frame
                 frame_with_dboxes = self.frame.copy()
                 for box1 in dboxes:
-                    x, y, x2, y2 = box1
-                    cv2.rectangle(frame_with_dboxes, (x, y), (x2, y2), (0, 255, 0), 2)
+                    x, y, w, h = box1
+                    x1 = x - w//2
+                    y1 = y - h//2
+                    x2 = x + w//2
+                    y2 = y + h//2
+                    cv2.rectangle(frame_with_dboxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 frame_with_dboxes = cv2.putText(frame_with_dboxes, f"Actual Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
                 # Display processed_Bboxes overlayed on current frame
                 frame_with_processed_boxes = self.frame.copy()
                 for box2 in processed_boxes:
-                    x, y, x2, y2 = box2
-                    cv2.rectangle(frame_with_processed_boxes, (x, y), (x2, y2), (255, 0, 0), 2)
+                    x, y, w, h = box2
+                    x1 = x - w//2
+                    y1 = y - h//2
+                    x2 = x + w//2
+                    y2 = y + h//2
+                    cv2.rectangle(frame_with_processed_boxes, (x1, y1), (x2, y2), (255, 0, 0), 2)
                 frame_with_processed_boxes = cv2.putText(frame_with_processed_boxes, f"Filtered Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
                 mask = torch.tensor(mask).unsqueeze(0).float()

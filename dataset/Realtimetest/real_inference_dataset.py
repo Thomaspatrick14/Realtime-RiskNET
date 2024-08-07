@@ -90,8 +90,12 @@ class RealInferenceDataset:
             classes_keep = []
             for i in range(num_boxes):
                 bbox = boxes[i, :]
-                dx = bbox[2] - bbox[0]  # x2 - x1
-                dy = bbox[3] - bbox[1]  # y2 - y1
+                x1 = bbox[0] - bbox[2] // 2
+                y1 = bbox[1] - bbox[3] // 2
+                x2 = bbox[0] + bbox[2] // 2
+                y2 = bbox[1] + bbox[3] // 2
+                dx = x2 - x1  # x2 - x1
+                dy = y2 - y1  # y2 - y1
                 surface = dx * dy
                 if surface > THRESHOLD:
                     boxes_keep.append(bbox)
@@ -116,13 +120,19 @@ class RealInferenceDataset:
             mask = mask  # nothing changes
         else:
             for i in range(num_boxes):
+                bbox = boxes[i, :]
+                x1 = bbox[0] - bbox[2] // 2
+                y1 = bbox[1] - bbox[3] // 2
+                x2 = bbox[0] + bbox[2] // 2
+                y2 = bbox[1] + bbox[3] // 2
                 if divide_box_coordinates:
-                    bbox = boxes[i, :] / 3
-                else:
-                    bbox = boxes[i, :]
-                dx = bbox[2] - bbox[0]  # x2 - x1
-                dy = bbox[3] - bbox[1]  # y2 - y1
-                com = (bbox[0] + int(dx / 2), bbox[1] + int(dy / 2))
+                    x1 = x1 // 3
+                    y1 = y1 // 3
+                    x2 = x2 // 3
+                    y2 = y2 // 3
+                dx = x2 - x1  # x2 - x1
+                dy = y2 - y1  # y2 - y1
+                com = (x1 + int(dx / 2), y1 + int(dy / 2))
                 radius = int((min(dx, dy) / 2))  # FOR CHANGING SIZES
                 object_mask = self.create_circular_mask(h_new, w_new, center=com, radius=int(radius))
                 mask = np.logical_or(mask, object_mask)

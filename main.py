@@ -351,7 +351,7 @@ if (not args.train) or args.test_exp:
     if args.camera:
         video_path = 0 # Replace with 0 to use webcam
     else:
-        video_path = os.path.join(folder_path, "/videos/yt.mp4")  # Replace with the path to your video file
+        video_path = os.path.join(folder_path, "videos", "yt.mp4")  # Replace with the path to your video file
 
     instance = Warehouse(pred_model, det_model, args, img_size, video_path)
     if args.viz:
