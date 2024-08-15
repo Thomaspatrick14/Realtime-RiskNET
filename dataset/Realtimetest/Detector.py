@@ -140,55 +140,47 @@ combined_classes = ("cyclist", "motorcyclist")
 combined_class_ids = (212, 214)
 
 
-def combine_bboxes(bboxes, class_ids):
-    remaining_ids = list(range(len(bboxes)))
-    new_bboxes = []
-    new_class_ids = []
+
+def combine_bboxes(boxes, classes):
+    if len(boxes) == 0 or len(classes) == 0:
+        return boxes, classes
+
+    remaining_ids = set(range(len(boxes)))
+    new_boxes = []
+    new_classes = []
 
     for class_pair, new_class_id in zip(combine_pairs, combined_class_ids):
-        ids1 = [i for i, cid in enumerate(class_ids) if cid == class_pair[0]]
-        ids2 = [i for i, cid in enumerate(class_ids) if cid == class_pair[1]]
-        if len(ids1) == 0 or len(ids2) == 0:
+        ids1 = [i for i in remaining_ids if classes[i] == class_pair[0]]
+        ids2 = [i for i in remaining_ids if classes[i] == class_pair[1]]
+        if not ids1 or not ids2:
             continue
 
         iou_matrix = np.zeros((len(ids1), len(ids2)), dtype=float)
         for i1, id1 in enumerate(ids1):
             for i2, id2 in enumerate(ids2):
-                l1, t1, r1, b1 = bboxes[id1] # l, t, r, b
-                l2, t2, r2, b2 = bboxes[id2]
-                a1 = (r1-l1) * (b1-t1)
-                a2 = (r2-l2) * (b2-t2)
-                intersection = max(0, (min(r2, r1) - max(l1, l2))) * max(0, (min(b1, b2) - max(t1, t2)))
-                iou_matrix[i1, i2] = float(intersection) / (a1 + a2)
+                l1, t1, r1, b1 = boxes[id1]
+                l2, t2, r2, b2 = boxes[id2]
+                intersection = max(0, min(r1, r2) - max(l1, l2)) * max(0, min(b1, b2) - max(t1, t2))
+                union = (r1-l1)*(b1-t1) + (r2-l2)*(b2-t2) - intersection
+                iou_matrix[i1, i2] = intersection / union if union > 0 else 0
+
         ids1_for_ids2 = np.argmax(iou_matrix, axis=0)
         matched_pairs = [(ids1[ci1], ids2[ci2]) for ci2, ci1 in enumerate(ids1_for_ids2) if iou_matrix[ci1, ci2] > 0.01]
-        # print(f"IOU matrix shape: {iou_matrix.shape}, iou matrix: {iou_matrix.flatten()}")
-        # print(f"ids1_ids2 {ids1_for_ids2}, max values for each ids2: {[iou_matrix[ci1, ci2] for ci2, ci1 in enumerate(ids1_for_ids2)]}")
-        # print(f"ids1 indices for ids2 indices: {ids1_for_ids2}, matched_pairs {matched_pairs}")
 
         for i1, i2 in matched_pairs:
-            l1, t1, r1, b1 = bboxes[i1]
-            l2, t2, r2, b2 = bboxes[i2]
-            new_bbox = [min(l1, l2), min(t1, t2), max(r1, r2), max(b1, b2)]
-            new_bboxes.append(new_bbox)
-            new_class_ids.append(new_class_id)
-            remaining_ids.remove(i1)
-            remaining_ids.remove(i2)
+            l1, t1, r1, b1 = boxes[i1]
+            l2, t2, r2, b2 = boxes[i2]
+            new_box = [min(l1, l2), min(t1, t2), max(r1, r2), max(b1, b2)]
+            new_boxes.append(new_box)
+            new_classes.append(new_class_id)
+            remaining_ids.discard(i1)
+            remaining_ids.discard(i2)
 
-    if len(new_bboxes) > 0:
-        bboxes = [bbox for i, bbox in enumerate(bboxes) if i in remaining_ids]
-        class_ids = [class_id for i, class_id in enumerate(class_ids) if i in remaining_ids]
-        bboxes.extend(new_bboxes)
-        class_ids.extend(new_class_ids)
+    # Add remaining boxes and classes
+    final_boxes = [boxes[i] for i in remaining_ids] + new_boxes
+    final_classes = [classes[i] for i in remaining_ids] + new_classes
 
-    return bboxes, class_ids
-
-
-def normalize_zero_one(data):
-    min_value = np.min(data)
-    max_value = np.max(data)
-    normalized = ((data - min_value) / (max_value - min_value))
-    return normalized
+    return final_boxes, final_classes
 
 def keep_roadusers_only(boxes, classes):
     boxes_keep = []
@@ -287,7 +279,6 @@ def predict(image, context, tensorrt, detection_threshold):
     # Preprocess the image
     image = cv2.cvtColor(image.astype(np.uint8), cv2.COLOR_BGR2RGB)
     input_image = image.transpose((2, 0, 1)).astype(np.float32)
-    # input_image = normalize_zero_one(input_image) #normalization doesnt seem to work, YOLO isn't detecting anything
     input_image /= 255.0
     input_image = np.expand_dims(input_image, axis=0)
     
@@ -301,7 +292,7 @@ def predict(image, context, tensorrt, detection_threshold):
     t_pred = time.time() - t_start
 
     # Process the output
-    trt_outputs = trt_outputs[0].reshape(1, 14175, 85)  # Adjust these dimensions based on your model output
+    trt_outputs = trt_outputs[0].reshape(1, 300, 6)  # Adjust these dimensions based on your model output
     pred_bboxes = trt_outputs[0][:, :4]
     pred_scores = trt_outputs[0][:, 4]
     pred_classes = trt_outputs[0][:, 5].astype(np.int32)
@@ -311,12 +302,10 @@ def predict(image, context, tensorrt, detection_threshold):
     classes = pred_classes[pred_scores >= detection_threshold]
     print(f"Number of detections: {len(boxes)}")
 
-    # boxes[:, [1,3]] -= 60
-
     return boxes, classes, t_pred
 
 def detect(frames, context, tensorrt):
-    THRESHOLD = 0.9
+    THRESHOLD = 0.5
 
     detections = []
     img = cv2.copyMakeBorder(frames, 0, 120, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0])

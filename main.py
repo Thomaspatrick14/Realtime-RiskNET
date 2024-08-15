@@ -63,6 +63,8 @@ parser.add_argument("--graph", default=False, action='store_true',
                     help='Shows live graph of Risk Probability, Time taken per sequence and Prediction time')
 parser.add_argument("--camera", default=False, action='store_true',
                     help='Indicates whether the model should be tested on the camera feed')
+parser.add_argument("--tenfps", default=False, action='store_true',
+                    help='Indicates whether the model should be inferred on the camera feed with 10fps')
 
 # Attention mechanism
 parser.add_argument("--conv1_out", type=int, default=8,
@@ -320,22 +322,13 @@ if (not args.train) or args.test_exp:
     pred_model.eval()
     Path(run_path).mkdir(parents=True, exist_ok=True)
 
-    # # Export the model to ONNX format
-    # input_data = torch.randn(1, 1, 8, 120, 160)
-
-    # pred_model = pred_model.cpu()
-    # input_data = input_data.cpu()
-
-    # # Export to ONNX
-    # torch.onnx.export(pred_model, input_data, "model.onnx", verbose=False)
-
-    # Load the Detection model
-    print(f"Loading the Detection model")
-    det_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-    if torch.cuda.is_available():
-        print("CUDA available: loading the detection model on the GPU")
-        det_model = det_model.cuda()
-    det_model.eval()
+    # # Load the Detection model
+    # print(f"Loading the Detection model")
+    # det_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+    # if torch.cuda.is_available():
+    #     print("CUDA available: loading the detection model on the GPU")
+    #     det_model = det_model.cuda()
+    # det_model.eval()
 
     # # For ablation study (to measure metrics for each video)
     # preds_list = []
@@ -349,20 +342,20 @@ if (not args.train) or args.test_exp:
     folder_path = os.path.dirname(os.path.abspath(__file__))
 
     if args.camera:
-        video_path = 0 # Replace with 0 to use webcam
+        video_path = 0 # Try 1 if you have multiple webcams connected
     else:
-        video_path = os.path.join(folder_path, "videos", "yt.mp4")  # Replace with the path to your video file
+        video_path = os.path.join(folder_path, "videos", "yt2.mp4")  # Replace with the path to your video file
 
-    instance = Warehouse(pred_model, det_model, args, img_size, video_path)
+    instance = Warehouse(pred_model, args, img_size, video_path)
     if args.viz:
         instance.append_detections_masks_viz()
     else:
         instance.append_detections_masks()
 
-    # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
-    # print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
+    # # for ablation study (to measure metrics for each video)
+    # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list)
+    # print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n")
 
 print("-"*79, "\n", "-"*79, "\n" * 5)
 
-
-# # python main.py --run_name Thesis_test
+# Command to run the code: python main.py --run_name Thesis_test --camera --viz --tenfps

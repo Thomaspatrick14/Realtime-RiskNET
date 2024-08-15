@@ -14,16 +14,16 @@ import matplotlib.pyplot as plt
 
 class Warehouse:
     # def __init__(self, pred_model, det_model, args, img_size, video_path, labels_path, preds_list, label_list):    # For ablation study
-    def __init__(self, pred_model, det_model, args, img_size, video_path):
+    def __init__(self, pred_model, args, img_size, video_path):
         self.pred_model = pred_model
-        self.det_model = det_model
+        # self.det_model = det_model # object detection model on CUDA
         self.args = args
         self.img_size = img_size
         self.video_path = video_path
         self.return_probs = False
 
         # Load the TensorRT Detection engine
-        yolo_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/dataset/Realtimetest/yolov5s.engine")
+        yolo_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/dataset/Realtimetest/yolov10s.engine")
         pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/pred_model.trt")
         self.pred_context = pred_engine.create_execution_context()
         self.yolo_context = yolo_engine.create_execution_context()
@@ -48,7 +48,7 @@ class Warehouse:
     
     def test(self, masks): # Risk prediction model (inference)
         # return test(masks, self.pred_model, return_probs=self.return_probs)
-        return test(masks, self.pred_context, self.pred_tensorrt, return_probs=self.return_probs)   # TensorRT
+        return test(masks, self.pred_context, self.pred_tensorrt, return_probs=self.return_probs) # TensorRT
         
     def append_detections_masks(self):
 
@@ -70,11 +70,8 @@ class Warehouse:
 
         fps = cap.get(cv2.CAP_PROP_FPS)
         print(f"Stream fps: {fps}")
+        print(f"Predictions on 10 fps") if self.args.tenfps else None
         print(f"Stream resolution: {cap.get(cv2.CAP_PROP_FRAME_WIDTH)} x {cap.get(cv2.CAP_PROP_FRAME_HEIGHT)}")
-
-        # if fps % 10 != 0:
-        #     print("\nFPS is not a multiple of 10. Please use a source with FPS as a multiple of 10")
-        #     exit()
 
         multiple = int(fps / 10) # 10 is the frame rate of the model
 
@@ -101,8 +98,8 @@ class Warehouse:
             t2 = time.time()
             if not ret:
                 break
-            
-            if frame_count == 0 or frame_count % multiple == 0:
+            fps_flag = not self.args.tenfps or (self.args.tenfps and (frame_count == 0 or frame_count % multiple == 0))
+            if fps_flag:
 
                 # if run_labels_data[frame_count] == -1: # For ablation study
                 #         break
@@ -172,6 +169,7 @@ class Warehouse:
 
         fps = cap.get(cv2.CAP_PROP_FPS)
         print(f"Stream fps: {fps}")
+        print(f"Predictions on 10 fps") if self.args.tenfps else None
         print(f"Stream resolution: {cap.get(cv2.CAP_PROP_FRAME_WIDTH)} x {cap.get(cv2.CAP_PROP_FRAME_HEIGHT)}")
 
         multiple = int(fps / 10) # 10 is the frame rate of the model
@@ -203,44 +201,15 @@ class Warehouse:
             ret, self.frame = cap.read()
             if not ret:
                 break
-            if frame_count == 0 or frame_count % multiple == 0:
-                print("Dropping down to 10 fps")
-                # reshaping the frame to the required size
-                #if frame is not 480x360, resize it
+            fps_flag = not self.args.tenfps or (self.args.tenfps and (frame_count == 0 or frame_count % multiple == 0))
+            if fps_flag:
+                # if frame is not 480x360, resize the frame to the required size
                 if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
                     self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
                 # if run_labels_data[frame_count] == -1: # For ablation study
                 #     break
                 mask, processed_boxes, dboxes = self.get_masks()
                 dmask = mask[0,0,:,:]
-                dmask = cv2.resize(dmask, (self.width, self.height))
-                dmask = dmask.astype(np.uint8) * 255    # Multiply by 255 to convert bool to uint8
-                dmask = np.expand_dims(dmask, axis=-1)
-                dmask = np.repeat(dmask, 3, axis=-1)    # Repeat the dimension three times
-                dmask = cv2.putText(dmask, f"Attention Masks", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-                # Display Bounding boxes overlayed on current frame
-                frame_with_dboxes = self.frame.copy()
-                for box1 in dboxes:
-                    x, y, w, h = box1
-                    x1 = x - w//2
-                    y1 = y - h//2
-                    x2 = x + w//2
-                    y2 = y + h//2
-                    cv2.rectangle(frame_with_dboxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                frame_with_dboxes = cv2.putText(frame_with_dboxes, f"Actual Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-                # Display processed_Bboxes overlayed on current frame
-                frame_with_processed_boxes = self.frame.copy()
-                for box2 in processed_boxes:
-                    x, y, w, h = box2
-                    x1 = x - w//2
-                    y1 = y - h//2
-                    x2 = x + w//2
-                    y2 = y + h//2
-                    cv2.rectangle(frame_with_processed_boxes, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                frame_with_processed_boxes = cv2.putText(frame_with_processed_boxes, f"Filtered Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
                 mask = torch.tensor(mask).unsqueeze(0).float()
 
                 if first:
@@ -258,7 +227,7 @@ class Warehouse:
                     
                     # preds_list.append(predictions[0]) # for ablation study
                     # label_list.append(run_labels_data[frame_count]) # for ablation study
-                    print(f"Prediction: {predictions}")
+                    print(f"Prediction: {predictions[0]}")
                     masks = masks[:,:,1:,:,:]
                     counter += 1
                     neram = time.time() - t2  # neram = time
@@ -270,7 +239,28 @@ class Warehouse:
                         print(f"Time for the first sequence (8 masks + 1 prediction): {first_seq:.4} s")
                     else:
                         print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
-                    # Visualize the prediction for each frame
+
+                    #### Visualize the prediction for each frame ####
+                    dmask = cv2.resize(dmask, (self.width, self.height))
+                    dmask = dmask.astype(np.uint8) * 255    # Multiply by 255 to convert bool to uint8
+                    dmask = np.expand_dims(dmask, axis=-1)
+                    dmask = np.repeat(dmask, 3, axis=-1)    # Repeat the dimension three times
+                    dmask = cv2.putText(dmask, f"Attention Masks", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                    # Display Bounding boxes overlayed on current frame
+                    frame_with_dboxes = self.frame.copy()
+                    for box1 in dboxes:
+                        x1, y1, x2, y2 = box1
+                        cv2.rectangle(frame_with_dboxes, (x1, y1), (x2, y2), (0, 255, 0), 2) if predictions[0] == 0 else cv2.rectangle(frame_with_dboxes, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    frame_with_dboxes = cv2.putText(frame_with_dboxes, f"Actual Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+                    # Display processed_Bboxes overlayed on current frame
+                    frame_with_processed_boxes = self.frame.copy()
+                    for box2 in processed_boxes:
+                        x1, y1, x2, y2 = box2
+                        cv2.rectangle(frame_with_processed_boxes, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                    frame_with_processed_boxes = cv2.putText(frame_with_processed_boxes, f"Filtered Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
                     self.frame = cv2.putText(self.frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                     combined_frame = np.hstack((np.vstack((self.frame, frame_with_processed_boxes)),np.vstack((frame_with_dboxes, dmask))))
                     
