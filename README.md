@@ -1,13 +1,16 @@
-# RiskNET_original
+# Realtime-RiskNET
 
-Original dev. code by Tim Schoonbeek. Reproducability test! <br>
+Original dev. code by Tim Schoonbeek. <br>
 
-Change the dataset's path in Line 114 in dataset.py <br>
-<br>
-To train and val on the entire dataset : python main.py --run_name Tim --input mask --n_epochs 20 --lr 0.000001 --batch_size 32 --train --backbone ResNext24 --h_flip --dataset constant_radius <br>
-<br>
-To train and val on a small dataset : python main.py --input mask --dataset extended --tiny_dataset --train --n_epochs 10 <br>
-(Change the "--dataset" as required) <br>
-<br>
-<br>
-To test on the fully trained Tim's set : python main.py --run_name Tim --input mask  --backbone ResNext24 --batch_size 32 --dataset real_world_08 --mask_method "case4"
+Real-time Collision Risk Prediction model, inferring on live camera feed. Models are optimized with TensorRT.
+
+### Command to infer
+```bash
+python /path/to/RiskNET/main.py --run_name saved_run_name
+```
+
+"--camera" is initialized along with the above command to infer on live camera feed. Else, infers on a saved video from the videos folder. <br>
+(Note: Might look slower when compared to processing a saved video. Saved videos are **_SAVED_**, the IDE doesn't have to wait for the next frame to arrive) <br>
+"--viz" is initialized if you want to visualize predictions and processing in realtime. (Note: Makes the pipeline run slower) <br>
+"--graph" is initialized if you want to see a real time graph for predictions, seq. time and prediction time. (Note: Makes the pipeline run slower) <br>
+"--tenfps" is initialized to drop down from the original camera framerate to 10 fps and infer on it.
