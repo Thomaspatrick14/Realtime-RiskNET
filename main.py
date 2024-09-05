@@ -23,7 +23,6 @@ from pred_models.create_model import get_model
 from dataset.dataset import SiemensDataset, MaskNoise
 from TVT.utils import *
 from warehouse import *
-import tensorrt as trt
 
 
 if platform == "win32":
@@ -344,7 +343,7 @@ if (not args.train) or args.test_exp:
     if args.camera:
         video_path = 0 # Try 1 if you have multiple webcams connected
     else:
-        video_path = os.path.join(folder_path, "videos", "yt2.mp4")  # Replace with the path to your video file
+        video_path = os.path.join(folder_path, "videos", "yt.mp4")  # Replace with the path to your video file
 
     instance = Warehouse(pred_model, args, img_size, video_path)
     if args.viz:
