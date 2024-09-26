@@ -161,6 +161,16 @@ if args.train:
     # Load the model
     model = get_model(args)
 
+    #### For exporting the model to ONNX format ####
+    # model.load_state_dict(torch.load('/home/tue/Downloads/checkpoint_best_epoch.pth'))
+    # model.eval()
+
+    # dummy_input = torch.randn(1, 1, 8, 120, 160)
+    # model = model.cpu()
+    # dummy_input = dummy_input.cpu()
+    # torch.onnx.export(model, dummy_input, 'model.onnx', export_params=True, opset_version=11,
+    #                   do_constant_folding=True, input_names=['input'], output_names=['output'], verbose=True)
+
     print('-'*79 + "\nLoading training set")
     train_set = SiemensDataset(mode='train', args=args)
     train_data_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)

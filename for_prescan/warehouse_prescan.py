@@ -5,6 +5,7 @@ import torch
 import os
 import socket
 import struct
+from sklearn.metrics import confusion_matrix
 
 from dataset.Realtimetest.real_inference_dataset import RealInferenceDataset
 from dataset.Realtimetest.Detector import detect
@@ -21,12 +22,11 @@ class Warehouse:
         # self.det_model = det_model # object detection model on CUDA
         self.args = args
         self.img_size = img_size
-        self.video_path = video_path
         self.return_probs = False
 
         # Load the TensorRT Detection engine
         yolo_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/dataset/Realtimetest/yolov10s.engine")
-        pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/pred_model.trt")
+        pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/model_engine_fp16.trt")
         self.pred_context = pred_engine.create_execution_context()
         self.yolo_context = yolo_engine.create_execution_context()
         self.yolo_tensorrt = allocate_buffers(yolo_engine) #inputs, outputs, bindings, stream
@@ -62,17 +62,9 @@ class Warehouse:
         cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
         self.test(cold_masks)
 
-        # Start the camera/video
-        if isinstance(self.video_path, int):
-            print('-'*79 + "\nStreaming Camera...")
-        else:
-            print('-'*79 + "\nStreaming Video...")
-        
-        fps = 30
-        print(f"Stream fps: {fps}")
         print(f"Predictions on 10 fps") if self.args.tenfps else None
 
-        multiple = int(fps / 10) # 10 is the frame rate of the model
+        multiple = int(3) # 10 is the frame rate of the model
         video_duration = "Live Streaming"
 
         # For ablation study
@@ -81,15 +73,22 @@ class Warehouse:
         # run_labels_data[run_labels_data == 2] = 1
         
         ############################################################
+        # Load the ground truth from CSV file (for prescan metrics)
+        ############################################################
+        labels_path = "/home/tue/Downloads/For_prescan/Demo_mostImportant_labels.csv"  # Path to your CSV file containing the ground truths
+        targets_list = []
+        with open(labels_path, newline='') as csvfile:
+            ground_truths = csv.reader(csvfile, delimiter=',')
+            targets_list = [int(row[0]) for row in ground_truths]  # Assuming ground truth values are in the first column
+
+        ############################################################
                     # TCP/IP & UDP socket creation #
         ############################################################
 
         # Define image dimensions
-        image_height = 360
-        image_width = 640
         num_channels = 3
-        frame_size = image_height * image_width * num_channels  # Total number of bytes in the image
-        single_layer = image_height * image_width  # Number of bytes in a single layer
+        frame_size = self.height * self.width * num_channels  # Total number of bytes in the image
+        single_layer = self.height * self.width  # Number of bytes in a single layer
 
         # Create a TCP/IP socket for receiving images
         tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -115,13 +114,12 @@ class Warehouse:
         tpred = 0
         first = True
         counter = 0
-        pred_list = []
+        pred_list = []      # for prescan metrics
         t1 = time.time()
-        frame_data = bytearray()
+
         try:
             while True:
-                t2 = time.time()
-                
+                                
                 while len(frame_data) < frame_size: # Accumulate frame packets until the frame is complete
                     packet = connection.recv(frame_size - len(frame_data))  # Receive TCP packet
                     if not packet:
@@ -129,12 +127,14 @@ class Warehouse:
                     frame_data.extend(packet)
 
                 if len(frame_data) == frame_size:
+                    t2 = time.time()
                     # Convert the byte data to a NumPy array with dtype uint8 and reshape to (height, width, channels)
-                    self.frame = np.stack((np.frombuffer(frame_data, dtype=np.uint8)[single_layer*2:].reshape((image_width, image_height)).transpose(),
-                                    np.frombuffer(frame_data, dtype=np.uint8)[single_layer:single_layer*2].reshape((image_width, image_height)).transpose(),
-                                    np.frombuffer(frame_data, dtype=np.uint8)[:single_layer].reshape((image_width, image_height)).transpose()), axis=-1)
+                    self.frame = np.stack((np.frombuffer(frame_data, dtype=np.uint8)[single_layer*2:].reshape((self.width, self.height)).transpose(),
+                                    np.frombuffer(frame_data, dtype=np.uint8)[single_layer:single_layer*2].reshape((self.width, self.height)).transpose(),
+                                    np.frombuffer(frame_data, dtype=np.uint8)[:single_layer].reshape((self.width, self.height)).transpose()), axis=-1)
                     frame_data.clear() # Clear the buffer for the next frame
-
+                    
+                    # cv2.imshow('Visualizer', self.frame)
                     fps_flag = not self.args.tenfps or (self.args.tenfps and (frame_count == 0 or frame_count % multiple == 0))
                     if fps_flag:
 
@@ -157,9 +157,9 @@ class Warehouse:
                             # preds_list.append(predictions[0]) # for ablation study
                             # label_list.append(run_labels_data[frame_count]) # for ablation study
                             tpred += t_total
-                            pred_list.append(predictions[0])
+                            pred_list.append(predictions[0])    # for prescan metrics
                             print(f"Prediction: {predictions[0]}")
-                            udp_socket.sendto(np.uint8(predictions[0]).tobytes(), (target_ip, target_port)) # Send the prediction via UDP
+                            # udp_socket.sendto(np.uint8(predictions[0]).tobytes(), (target_ip, target_port)) # Send the prediction via UDP
                             masks = masks[:,:,1:,:,:]
                             counter += 1
                             neram = time.time() - t2  # neram = time
@@ -173,16 +173,27 @@ class Warehouse:
                             else:
                                 print(f"Time for seq (1 det + 1 pred): {neram:.4} s")
                             
-                    # Display the frame using OpenCV
-                    cv2.imshow('Received Frame', self.frame)
+                            # cv2.imshow('Visualizer', self.frame)
+                    frame_count += 1
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
-
-                frame_count += 1
+                        break
 
         finally:    
-            print(f"\nVideo Duration: {video_duration} s"
+            # ##### for prescan metrics #####
+            bal_acc, precision, recall, fscore = get_classification_metrics(pred_list, targets_list)
+            print(f"\nBalanced Accuracy: {bal_acc}\nPrecision: {precision}\nRecall: {recall}\nF-score: {fscore}")
+
+            # Compute confusion matrix
+            confusion_mat = confusion_matrix(targets_list, pred_list)
+            print("\n Confusion Matrix:\n")
+            print(confusion_mat)
+            print("\nLegend \n[TN  FP]\n[FN  TP]\n 0 = TN + FP \n 1 = FN + TP\n")
+            
+            #################################
+                
+            print(f"\nFrame count: {frame_count}"
+                f"\nVideo Duration: {video_duration} s"
                 f"\nTotal processing time: {time.time() - t1:.4} s"
                 f"\nTime for first seq (8 detections + 1 prediction): {first_seq:.4} s" 
                 f"\nAverage sequence time: {total_neram / counter:.4} s" 
@@ -203,17 +214,9 @@ class Warehouse:
         cold_masks = cold_masks.repeat(1, 1, 8, 1, 1)
         self.test(cold_masks)
 
-        # Start the camera/video
-        if isinstance(self.video_path, int):
-            print('-'*79 + "\nStreaming Camera...")
-        else:
-            print('-'*79 + "\nStreaming Video...")
-
-        fps = 30
-        print(f"Stream fps: {fps}")
         print(f"Predictions on 10 fps") if self.args.tenfps else None
 
-        multiple = int(fps / 10) # 10 is the frame rate of the model
+        multiple = int(3) # 10 is the frame rate of the model
         video_duration = "Live Streaming"
 
         # # For ablation study
@@ -228,14 +231,21 @@ class Warehouse:
             self.return_probs = True
 
         ############################################################
+        # Load the ground truth from CSV file
+        ############################################################
+        # labels_path = "/home/tue/Downloads/EuroNCAP_bicycle_labels.csv"  # Path to your CSV file containing the ground truths
+        # targets_list = []
+        # with open(labels_path, newline='') as csvfile:
+        #     ground_truths = csv.reader(csvfile, delimiter=',')
+        #     targets_list = [int(row[0]) for row in ground_truths]  # Assuming ground truth values are in the first column
+
+        ############################################################
                     # TCP/IP & UDP socket creation #
         ############################################################
         # Define image dimensions
-        image_height = 360
-        image_width = 640
         num_channels = 3
-        frame_size = image_height * image_width * num_channels  # Total number of bytes in the image
-        single_layer = image_height * image_width  # Number of bytes in a single layer
+        frame_size = self.height * self.width * num_channels  # Total number of bytes in the image
+        single_layer = self.height * self.width  # Number of bytes in a single layer
 
         # Create a TCP/IP socket for receiving images
         tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -258,6 +268,7 @@ class Warehouse:
 
         frame_count = 0
         total_neram = 0
+        pred_list = []
         first = True
         counter = 0
         total_tpred = 0
@@ -275,9 +286,9 @@ class Warehouse:
 
                 if len(frame_data) == frame_size:
                     # Convert the byte data to a NumPy array with dtype uint8 and reshape to (height, width, channels)
-                    self.frame = np.stack((np.frombuffer(frame_data, dtype=np.uint8)[single_layer*2:].reshape((image_width, image_height)).transpose(),
-                                    np.frombuffer(frame_data, dtype=np.uint8)[single_layer:single_layer*2].reshape((image_width, image_height)).transpose(),
-                                    np.frombuffer(frame_data, dtype=np.uint8)[:single_layer].reshape((image_width, image_height)).transpose()), axis=-1)
+                    self.frame = np.stack((np.frombuffer(frame_data, dtype=np.uint8)[single_layer*2:].reshape((self.width, self.height)).transpose(),
+                                    np.frombuffer(frame_data, dtype=np.uint8)[single_layer:single_layer*2].reshape((self.width, self.height)).transpose(),
+                                    np.frombuffer(frame_data, dtype=np.uint8)[:single_layer].reshape((self.width, self.height)).transpose()), axis=-1)
                     frame_data.clear() # Clear the buffer for the next frame
 
                     fps_flag = not self.args.tenfps or (self.args.tenfps and (frame_count == 0 or frame_count % multiple == 0))
@@ -303,7 +314,8 @@ class Warehouse:
                                 probs_list.append(probs[0])
                             else:
                                 predictions, tpred = self.test(masks)
-                            
+
+                            pred_list.append(predictions[0])
                             # preds_list.append(predictions[0]) # for ablation study
                             # label_list.append(run_labels_data[frame_count]) # for ablation study
                             print(f"Prediction: {predictions[0]}")
@@ -341,7 +353,7 @@ class Warehouse:
                                 cv2.rectangle(frame_with_processed_boxes, (x1, y1), (x2, y2), (255, 0, 0), 2)
                             frame_with_processed_boxes = cv2.putText(frame_with_processed_boxes, f"Filtered Detections", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-                            self.frame = cv2.putText(self.frame, f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            self.frame = cv2.putText(self.frame.copy(), f"Prediction: {predictions[0]}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                             combined_frame = np.hstack((np.vstack((self.frame, frame_with_processed_boxes)),np.vstack((frame_with_dboxes, dmask))))
                             
                             # Create the plot
@@ -371,11 +383,21 @@ class Warehouse:
                 #     break
                 frame_count += 1
         finally:
-            # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
-        
-            # print(f"Prediction: {preds_list} length: {len(preds_list)} \nLabels: {label_list} length: {len(label_list)}"
-                #   f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
-        
+            # bal_acc, precision, recall, fscore = get_classification_metrics(pred_list[1:], targets_list[7:])
+            # print(f"\nBalanced Accuracy: {bal_acc}\nPrecision: {precision}\nRecall: {recall}\nF-score: {fscore}")
+
+            # # Compute confusion matrix
+            # confusion_mat = confusion_matrix(targets_list[7:], pred_list[1:])
+            # print("\n Confusion Matrix:\n")
+            # print(confusion_mat)
+            # print("\nLegend \n[TN  FP]\n[FN  TP]\n 0 = TN + FP \n 1 = FN + TP\n")
+            # Save pred_list as a CSV file
+            pred_list_path = "/home/tue/Downloads/For_prescan/pred_list.csv"  # Path to save the predictions
+            with open(pred_list_path, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Prediction"])  # Write header
+                for pred in pred_list:
+                    writer.writerow([pred])
             print(f"\nFrame count: {frame_count}"
                 f"\nVideo Duration: {video_duration} s"
                 f"\nTotal processing time: {time.time() - t1:.4} s"

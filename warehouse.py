@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 
 class Warehouse:
     # def __init__(self, pred_model, det_model, args, img_size, video_path, labels_path, preds_list, label_list):    # For ablation study
-    def __init__(self, pred_model, args, img_size, video_path):
-        self.pred_model = pred_model
+    def __init__(self,args, img_size, video_path):
+        # self.pred_model = pred_model
         # self.det_model = det_model # object detection model on CUDA
         self.args = args
         self.img_size = img_size
@@ -24,7 +24,7 @@ class Warehouse:
 
         # Load the TensorRT Detection engine
         yolo_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/dataset/Realtimetest/yolov10s.engine")
-        pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/pred_model.trt")
+        pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/old/pred_model.trt")
         self.pred_context = pred_engine.create_execution_context()
         self.yolo_context = yolo_engine.create_execution_context()
         self.yolo_tensorrt = allocate_buffers(yolo_engine) #inputs, outputs, bindings, stream

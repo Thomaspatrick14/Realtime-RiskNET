@@ -54,9 +54,7 @@ def test(masks, context, tensorrt, logger=None, print_pred=False, return_probs=F
     outputs = torch.tensor(outputs_host[0].reshape(-1, 2))
 
     preds = torch.max(outputs, 1).indices # preds is the index of the max value in the output tensor, since this is a binary classification problem, preds will be 0 or 1
-    probs = outputs[:, 1].cpu().detach().tolist()
-
-    col_probs = probs
+    
     predictions = preds.cpu().detach().tolist()
 
     if print_pred:
@@ -66,6 +64,8 @@ def test(masks, context, tensorrt, logger=None, print_pred=False, return_probs=F
 
     print(f"Inference time {t_total:.4} s")
     if return_probs:
+        probs = outputs[:, 1].cpu().detach().tolist()
+        col_probs = probs
         return predictions, col_probs, t_total
     else:
         return predictions, t_total
