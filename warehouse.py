@@ -13,7 +13,7 @@ from TVT.utils import *
 import matplotlib.pyplot as plt
 
 class Warehouse:
-    # def __init__(self, pred_model, det_model, args, img_size, video_path, labels_path, preds_list, label_list):    # For ablation study
+    # def __init__(self, pred_context, yolo_context, yolo_tensorrt, pred_tensorrt, args, img_size, video_path, labels_path, preds_list, label_list):    # FOR ABLATION STUDY
     def __init__(self,args, img_size, video_path):
         # self.pred_model = pred_model
         # self.det_model = det_model # object detection model on CUDA
@@ -33,9 +33,13 @@ class Warehouse:
         # Get dimensions of input frames
         self.height, self.width = 360, 480
 
-        # For ablation study
+        # FOR ABLATION STUDY
+        # self.pred_context = pred_context
+        # self.yolo_context = yolo_context
+        # self.yolo_tensorrt = yolo_tensorrt #inputs, outputs, bindings, stream
+        # self.pred_tensorrt = pred_tensorrt
         # self.labels_path = labels_path
-        # self.pred_list = preds_list
+        # self.preds_list = preds_list
         # self.label_list = label_list
 
     def detect(self): # object detection model
@@ -80,8 +84,8 @@ class Warehouse:
         else:
             video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
 
-        # For ablation study
-        # run_labels_data = np.loadtxt(labels_path, delimiter=',')
+        # FOR ABLATION STUDY
+        # run_labels_data = np.loadtxt(self.labels_path, delimiter=',')
         # run_labels_data[run_labels_data == 1] = 0
         # run_labels_data[run_labels_data == 2] = 1
 
@@ -101,7 +105,7 @@ class Warehouse:
             fps_flag = not self.args.tenfps or (self.args.tenfps and (frame_count == 0 or frame_count % multiple == 0))
             if fps_flag:
 
-                # if run_labels_data[frame_count] == -1: # For ablation study
+                # if run_labels_data[frame_count] == -1: # FOR ABLATION STUDY
                 #         break
                 
                 #if frame is not 480x360, resize it
@@ -117,8 +121,8 @@ class Warehouse:
 
                 if masks.shape[2] == 8:
                     predictions, t_total = self.test(masks)
-                    # preds_list.append(predictions[0]) # for ablation study
-                    # label_list.append(run_labels_data[frame_count]) # for ablation study
+                    # self.preds_list.append(predictions[0]) # FOR ABLATION STUDY
+                    # self.label_list.append(run_labels_data[frame_count]) # FOR ABLATION STUDY
                     tpred += t_total
                     pred_list.append(predictions[0])
                     print(f"Prediction: {predictions}")
@@ -179,7 +183,7 @@ class Warehouse:
         else:
             video_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
 
-        # # For ablation study
+        # # FOR ABLATION STUDY
         # run_labels_data = np.loadtxt(self.labels_path, delimiter=',')
         # run_labels_data[run_labels_data == 1] = 0
         # run_labels_data[run_labels_data == 2] = 1
@@ -206,7 +210,7 @@ class Warehouse:
                 # if frame is not 480x360, resize the frame to the required size
                 if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
                     self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-                # if run_labels_data[frame_count] == -1: # For ablation study
+                # if run_labels_data[frame_count] == -1: # FOR ABLATION STUDY
                 #     break
                 mask, processed_boxes, dboxes = self.get_masks()
                 dmask = mask[0,0,:,:]
@@ -225,8 +229,8 @@ class Warehouse:
                     else:
                         predictions, tpred = self.test(masks)
                     
-                    # preds_list.append(predictions[0]) # for ablation study
-                    # label_list.append(run_labels_data[frame_count]) # for ablation study
+                    # preds_list.append(predictions[0]) # FOR ABLATION STUDY
+                    # label_list.append(run_labels_data[frame_count]) # FOR ABLATION STUDY
                     print(f"Prediction: {predictions[0]}")
                     masks = masks[:,:,1:,:,:]
                     counter += 1
@@ -291,10 +295,10 @@ class Warehouse:
                 break
             frame_count += 1
 
-        # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # for ablation study
+        # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list) # FOR ABLATION STUDY
     
         # print(f"Prediction: {preds_list} length: {len(preds_list)} \nLabels: {label_list} length: {len(label_list)}"
-            #   f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # for ablation study
+            #   f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n") # FOR ABLATION STUDY
     
         print(f"\nFrame count: {frame_count}"
               f"\nVideo Duration: {video_duration} s"

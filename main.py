@@ -22,8 +22,8 @@ from TVT.validate import val_epoch
 from pred_models.create_model import get_model
 from dataset.dataset import SiemensDataset, MaskNoise
 from TVT.utils import *
-from for_prescan.warehouse_prescan import *
-# from warehouse import *
+# from for_prescan.warehouse_prescan import *
+from warehouse import *
 
 
 if platform == "win32":
@@ -324,15 +324,15 @@ if (not args.train) or args.test_exp:
                     int(1280 / args.downscale_factor)]  # [120, 160] for downscale_factor = 8
 
     # Load the Prediction model
-    pred_model = get_model(args)
-    if platform == "win32":
-        pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth', map_location=torch.device('cpu')))
-    else:
-        pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth'))
-    pred_model.eval()
-    Path(run_path).mkdir(parents=True, exist_ok=True)
+    # pred_model = get_model(args)
+    # if platform == "win32":
+    #     pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth', map_location=torch.device('cpu')))
+    # else:
+    #     pred_model.load_state_dict(torch.load(run_path + '/checkpoint_best_epoch.pth'))
+    # pred_model.eval()
+    # Path(run_path).mkdir(parents=True, exist_ok=True)
 
-    # # Load the Detection model
+    # Load the Detection model
     # print(f"Loading the Detection model")
     # det_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
     # if torch.cuda.is_available():
@@ -340,32 +340,46 @@ if (not args.train) or args.test_exp:
     #     det_model = det_model.cuda()
     # det_model.eval()
 
-    # # For ablation study (to measure metrics for each video)
+    folder_path = os.path.dirname(os.path.abspath(__file__))
+
+    ##### For ablation study (to measure metrics for each video) #####
+    # from tRTfiles.yolo_tensorrt_engine import load_engine, allocate_buffers
     # preds_list = []
     # label_list = []
+    # # Load the TensorRT Detection engine
+    # yolo_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/dataset/Realtimetest/yolov10s.engine")
+    # pred_engine = load_engine("/home/tue/risknet/Realtime-RiskNET/pred_models/old/pred_model.trt")
+    # pred_context = pred_engine.create_execution_context()
+    # yolo_context = yolo_engine.create_execution_context()
+    # yolo_tensorrt = allocate_buffers(yolo_engine) #inputs, outputs, bindings, stream
+    # pred_tensorrt = allocate_buffers(pred_engine)
     # for i in range(1, 17):
     #     video_path = os.path.join(folder_path, "Tim's comparison/yt", f"{i}.mp4")
     #     label_path = os.path.join(folder_path, "Tim's comparison/labels", f"{i}.csv")
-    #     append_detections_masks(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
-    #     append_detections_masks_viz(det_model, pred_model, args, img_size, video_path, label_path, preds_list, label_list)
-
-    folder_path = os.path.dirname(os.path.abspath(__file__))
-
+    #     instance = Warehouse(pred_context, yolo_context, yolo_tensorrt, pred_tensorrt, args, img_size, video_path, label_path, preds_list, label_list)
+    #     if args.viz:
+    #         instance.append_detections_masks_viz()
+    #     else:
+    #         instance.append_detections_masks()
+    # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list)
+    # print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n")
+    # confusion_mat = confusion_matrix(label_list, preds_list)
+    # print("\n Confusion Matrix:\n")
+    # print(confusion_mat)
+    # print("\nLegend \n[TN  FP]\n[FN  TP]\n 0 = TN + FP \n 1 = FN + TP\n")
+    ####################################################################
+   
     if args.camera:
         video_path = 0 # Try 1 if you have multiple webcams connected
     else:
         video_path = os.path.join(folder_path, "videos", "yt.mp4")  # Replace with the path to your video file
 
-    instance = Warehouse(pred_model, args, img_size, video_path)
+    instance = Warehouse(args, img_size, video_path)
     if args.viz:
         instance.append_detections_masks_viz()
     else:
         instance.append_detections_masks()
-
-    # # for ablation study (to measure metrics for each video)
-    # bal_acc, precision, recall, fscore = get_classification_metrics(preds_list, label_list)
-    # print(f"\n\nBalanced Accuracy: {bal_acc:.4} \nPrecision: {precision:.4} \nRecall: {recall:.4} \nF1 Score: {fscore:.4}\n")
-
+    
 print("-"*79, "\n", "-"*79, "\n" * 5)
 
 # Command to run the code: python main.py --run_name Thesis_test --camera --viz --tenfps

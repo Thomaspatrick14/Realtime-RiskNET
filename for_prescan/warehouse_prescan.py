@@ -16,9 +16,8 @@ from TVT.utils import *
 import matplotlib.pyplot as plt
 
 class Warehouse:
-    # def __init__(self, pred_model, det_model, args, img_size, video_path, labels_path, preds_list, label_list):    # For ablation study
-    def __init__(self, pred_model, args, img_size, video_path):
-        self.pred_model = pred_model
+    def __init__(self, args, img_size, video_path):
+        # self.pred_model = pred_model
         # self.det_model = det_model # object detection model on CUDA
         self.args = args
         self.img_size = img_size
@@ -34,11 +33,6 @@ class Warehouse:
 
         # Get dimensions of input frames
         self.height, self.width = 360, 480
-
-        # For ablation study
-        # self.labels_path = labels_path
-        # self.pred_list = preds_list
-        # self.label_list = label_list
 
     def detect(self): # object detection model
         # return detect(self.frame, self.det_model)
@@ -66,16 +60,11 @@ class Warehouse:
 
         multiple = int(3) # 10 is the frame rate of the model
         video_duration = "Live Streaming"
-
-        # For ablation study
-        # run_labels_data = np.loadtxt(labels_path, delimiter=',')
-        # run_labels_data[run_labels_data == 1] = 0
-        # run_labels_data[run_labels_data == 2] = 1
         
         ############################################################
         # Load the ground truth from CSV file (for prescan metrics)
         ############################################################
-        labels_path = "/home/tue/Downloads/For_prescan/Demo_mostImportant_labels.csv"  # Path to your CSV file containing the ground truths
+        labels_path = "/home/tue/risknet/Realtime-RiskNET/for_prescan/For_prescan/Demo_mostImportant_labels.csv"  # Path to your CSV file containing the ground truths
         targets_list = []
         with open(labels_path, newline='') as csvfile:
             ground_truths = csv.reader(csvfile, delimiter=',')
@@ -138,9 +127,6 @@ class Warehouse:
                     fps_flag = not self.args.tenfps or (self.args.tenfps and (frame_count == 0 or frame_count % multiple == 0))
                     if fps_flag:
 
-                        # if run_labels_data[frame_count] == -1: # For ablation study
-                        #         break
-                        
                         #if frame is not 480x360, resize it
                         if self.frame.shape[0] != self.height or self.frame.shape[1] != self.width:
                             self.frame = cv2.resize(self.frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
@@ -154,12 +140,10 @@ class Warehouse:
 
                         if masks.shape[2] == 8:
                             predictions, t_total = self.test(masks)
-                            # preds_list.append(predictions[0]) # for ablation study
-                            # label_list.append(run_labels_data[frame_count]) # for ablation study
                             tpred += t_total
                             pred_list.append(predictions[0])    # for prescan metrics
                             print(f"Prediction: {predictions[0]}")
-                            # udp_socket.sendto(np.uint8(predictions[0]).tobytes(), (target_ip, target_port)) # Send the prediction via UDP
+                            udp_socket.sendto(np.uint8(predictions[0]).tobytes(), (target_ip, target_port)) # Send the prediction via UDP
                             masks = masks[:,:,1:,:,:]
                             counter += 1
                             neram = time.time() - t2  # neram = time
@@ -176,13 +160,14 @@ class Warehouse:
                             # cv2.imshow('Visualizer', self.frame)
                     frame_count += 1
 
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+                # if cv2.waitKey(1) & 0xFF == ord('q'):
+                #         break
 
         finally:    
             # ##### for prescan metrics #####
+            print(f"len(pred_list): {len(pred_list)}")
             bal_acc, precision, recall, fscore = get_classification_metrics(pred_list, targets_list)
-            print(f"\nBalanced Accuracy: {bal_acc}\nPrecision: {precision}\nRecall: {recall}\nF-score: {fscore}")
+            print(f"\nPrecision: {precision}\nF-score: {fscore}\nBalanced Accuracy: {bal_acc}\nRecall: {recall}")
 
             # Compute confusion matrix
             confusion_mat = confusion_matrix(targets_list, pred_list)
